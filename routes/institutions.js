@@ -4,27 +4,27 @@ const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-const adminOnly = (req, res, next) => {
+const adminOnly = async (req, res, next) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();
 };
 
-const getUniversities = () => db.prepare(`
+const getUniversities = async () => await db.all(`
   SELECT id, name, shortName, location, type, createdAt
-  FROM universities ORDER BY name COLLATE NOCASE ASC
-`).all();
+  FROM universities ORDER BY LOWER(name) ASC
+`);
 
-const getColleges = () => db.prepare(`
+const getColleges = async () => await db.all(`
   SELECT id, universityId, name, district, createdAt
-  FROM colleges ORDER BY name COLLATE NOCASE ASC
-`).all();
+  FROM colleges ORDER BY LOWER(name) ASC
+`);
 
 // Public: registration + profile screens need this before/without login
-router.get('/', (req, res) => {
-  const universities = getUniversities();
-  const colleges = getColleges();
+router.get('/', async (req, res) => {
+  const universities = await getUniversities();
+  const colleges = await getColleges();
   const grouped = universities.map((u) => ({
     ...u,
     colleges: colleges.filter((c) => c.universityId === u.id),
@@ -33,7 +33,7 @@ router.get('/', (req, res) => {
 });
 
 // ===================== ADMIN: UNIVERSITIES =====================
-router.post('/universities', authenticateToken, adminOnly, (req, res) => {
+router.post('/universities', authenticateToken, adminOnly, async (req, res) => {
   const name = (req.body.name || '').trim();
   const shortName = (req.body.shortName || '').trim();
   const location = (req.body.location || '').trim();
@@ -41,20 +41,18 @@ router.post('/universities', authenticateToken, adminOnly, (req, res) => {
 
   if (!name) return res.status(400).json({ error: 'University name is required' });
 
-  const existing = db.prepare('SELECT id FROM universities WHERE LOWER(name) = LOWER(?)').get(name);
+  const existing = await db.get('SELECT id FROM universities WHERE LOWER(name) = LOWER(?)', name);
   if (existing) return res.status(400).json({ error: 'This university already exists' });
 
-  const info = db.prepare('INSERT INTO universities (name, shortName, location, type) VALUES (?, ?, ?, ?)')
-    .run(name, shortName, location, type);
+  const info = await db.run('INSERT INTO universities (name, shortName, location, type) VALUES (?, ?, ?, ?)', name, shortName, location, type);
 
-  const university = db.prepare('SELECT id, name, shortName, location, type FROM universities WHERE id = ?')
-    .get(info.lastInsertRowid);
+  const university = await db.get('SELECT id, name, shortName, location, type FROM universities WHERE id = ?', info.lastInsertRowid);
 
   res.status(201).json({ message: 'University added', university: { ...university, colleges: [] } });
 });
 
-router.put('/universities/:id', authenticateToken, adminOnly, (req, res) => {
-  const university = db.prepare('SELECT id, name, shortName, location, type FROM universities WHERE id = ?').get(req.params.id);
+router.put('/universities/:id', authenticateToken, adminOnly, async (req, res) => {
+  const university = await db.get('SELECT id, name, shortName, location, type FROM universities WHERE id = ?', req.params.id);
   if (!university) return res.status(404).json({ error: 'University not found' });
 
   const name = (req.body.name ?? university.name).trim();
@@ -64,33 +62,29 @@ router.put('/universities/:id', authenticateToken, adminOnly, (req, res) => {
 
   if (!name) return res.status(400).json({ error: 'University name is required' });
 
-  const existing = db.prepare('SELECT id FROM universities WHERE LOWER(name) = LOWER(?) AND id != ?')
-    .get(name, university.id);
+  const existing = await db.get('SELECT id FROM universities WHERE LOWER(name) = LOWER(?) AND id != ?', name, university.id);
   if (existing) return res.status(400).json({ error: 'This university already exists' });
 
-  db.prepare('UPDATE universities SET name = ?, shortName = ?, location = ?, type = ? WHERE id = ?')
-    .run(name, shortName, location, type, university.id);
+  await db.run('UPDATE universities SET name = ?, shortName = ?, location = ?, type = ? WHERE id = ?', name, shortName, location, type, university.id);
 
-  const updated = db.prepare('SELECT id, name, shortName, location, type FROM universities WHERE id = ?')
-    .get(university.id);
-  const colleges = db.prepare('SELECT id, universityId, name, district FROM colleges WHERE universityId = ? ORDER BY name COLLATE NOCASE ASC')
-    .all(university.id);
+  const updated = await db.get('SELECT id, name, shortName, location, type FROM universities WHERE id = ?', university.id);
+  const colleges = await db.all('SELECT id, universityId, name, district FROM colleges WHERE universityId = ? ORDER BY LOWER(name) ASC', university.id);
 
   res.json({ message: `Updated ${name}`, university: { ...updated, colleges } });
 });
 
-router.delete('/universities/:id', authenticateToken, adminOnly, (req, res) => {
-  const university = db.prepare('SELECT id, name FROM universities WHERE id = ?').get(req.params.id);
+router.delete('/universities/:id', authenticateToken, adminOnly, async (req, res) => {
+  const university = await db.get('SELECT id, name FROM universities WHERE id = ?', req.params.id);
   if (!university) return res.status(404).json({ error: 'University not found' });
 
-  const collegeCount = db.prepare('SELECT COUNT(*) as count FROM colleges WHERE universityId = ?').get(university.id).count;
-  db.prepare('DELETE FROM universities WHERE id = ?').run(university.id);
+  const collegeCount = (await db.get('SELECT COUNT(*) as count FROM colleges WHERE universityId = ?', university.id)).count;
+  await db.run('DELETE FROM universities WHERE id = ?', university.id);
 
   res.json({ message: `Removed ${university.name} and ${collegeCount} college${collegeCount === 1 ? '' : 's'}` });
 });
 
 // ===================== ADMIN: COLLEGES =====================
-router.post('/colleges', authenticateToken, adminOnly, (req, res) => {
+router.post('/colleges', authenticateToken, adminOnly, async (req, res) => {
   const name = (req.body.name || '').trim();
   const district = (req.body.district || '').trim();
   const universityId = Number(req.body.universityId);
@@ -98,24 +92,21 @@ router.post('/colleges', authenticateToken, adminOnly, (req, res) => {
   if (!name) return res.status(400).json({ error: 'College name is required' });
   if (!universityId) return res.status(400).json({ error: 'Select a university first' });
 
-  const university = db.prepare('SELECT id FROM universities WHERE id = ?').get(universityId);
+  const university = await db.get('SELECT id FROM universities WHERE id = ?', universityId);
   if (!university) return res.status(404).json({ error: 'University not found' });
 
-  const existing = db.prepare('SELECT id FROM colleges WHERE universityId = ? AND LOWER(name) = LOWER(?)')
-    .get(universityId, name);
+  const existing = await db.get('SELECT id FROM colleges WHERE universityId = ? AND LOWER(name) = LOWER(?)', universityId, name);
   if (existing) return res.status(400).json({ error: 'This college already exists under the university' });
 
-  const info = db.prepare('INSERT INTO colleges (universityId, name, district) VALUES (?, ?, ?)')
-    .run(universityId, name, district);
+  const info = await db.run('INSERT INTO colleges (universityId, name, district) VALUES (?, ?, ?)', universityId, name, district);
 
-  const college = db.prepare('SELECT id, universityId, name, district FROM colleges WHERE id = ?')
-    .get(info.lastInsertRowid);
+  const college = await db.get('SELECT id, universityId, name, district FROM colleges WHERE id = ?', info.lastInsertRowid);
 
   res.status(201).json({ message: 'College added', college });
 });
 
-router.put('/colleges/:id', authenticateToken, adminOnly, (req, res) => {
-  const college = db.prepare('SELECT id, universityId, name, district FROM colleges WHERE id = ?').get(req.params.id);
+router.put('/colleges/:id', authenticateToken, adminOnly, async (req, res) => {
+  const college = await db.get('SELECT id, universityId, name, district FROM colleges WHERE id = ?', req.params.id);
   if (!college) return res.status(404).json({ error: 'College not found' });
 
   const name = (req.body.name ?? college.name).trim();
@@ -123,24 +114,21 @@ router.put('/colleges/:id', authenticateToken, adminOnly, (req, res) => {
 
   if (!name) return res.status(400).json({ error: 'College name is required' });
 
-  const existing = db.prepare('SELECT id FROM colleges WHERE universityId = ? AND LOWER(name) = LOWER(?) AND id != ?')
-    .get(college.universityId, name, college.id);
+  const existing = await db.get('SELECT id FROM colleges WHERE universityId = ? AND LOWER(name) = LOWER(?) AND id != ?', college.universityId, name, college.id);
   if (existing) return res.status(400).json({ error: 'This college already exists under the university' });
 
-  db.prepare('UPDATE colleges SET name = ?, district = ? WHERE id = ?')
-    .run(name, district, college.id);
+  await db.run('UPDATE colleges SET name = ?, district = ? WHERE id = ?', name, district, college.id);
 
-  const updated = db.prepare('SELECT id, universityId, name, district FROM colleges WHERE id = ?')
-    .get(college.id);
+  const updated = await db.get('SELECT id, universityId, name, district FROM colleges WHERE id = ?', college.id);
 
   res.json({ message: `Updated ${name}`, college: updated });
 });
 
-router.delete('/colleges/:id', authenticateToken, adminOnly, (req, res) => {
-  const college = db.prepare('SELECT id, name FROM colleges WHERE id = ?').get(req.params.id);
+router.delete('/colleges/:id', authenticateToken, adminOnly, async (req, res) => {
+  const college = await db.get('SELECT id, name FROM colleges WHERE id = ?', req.params.id);
   if (!college) return res.status(404).json({ error: 'College not found' });
 
-  db.prepare('DELETE FROM colleges WHERE id = ?').run(college.id);
+  await db.run('DELETE FROM colleges WHERE id = ?', college.id);
   res.json({ message: `Removed ${college.name}` });
 });
 

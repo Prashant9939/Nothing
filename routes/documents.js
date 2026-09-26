@@ -22,9 +22,7 @@ const registry = require('../lib/supabaseRegistry');
 
 const router = express.Router();
 
-const hasPaidAccess = (enrollmentId, userId) => !!db.prepare(
-  "SELECT 1 FROM payments WHERE enrollmentId = ? AND userId = ? AND status = 'completed' LIMIT 1"
-).get(enrollmentId, userId);
+const hasPaidAccess = async (enrollmentId, userId) => !!await db.get("SELECT 1 FROM payments WHERE enrollmentId = ? AND userId = ? AND status = 'completed' LIMIT 1", enrollmentId, userId);
 
 // ===================== BRANDING =====================
 const LOGO_FILE = path.join(__dirname, '..', 'client', 'public', 'logo', 'logo-full.png');
@@ -75,7 +73,7 @@ const VERIFY_BASE = (process.env.SITE_URL || `http://localhost:${process.env.POR
 // Builds the QR pointing at the public verification page for a document reference
 async function makeQr(ref) {
   try {
-    const base = (getSetting(db, 'siteUrl') || VERIFY_BASE).replace(/\/+$/, '');
+    const base = ((await getSetting(db, 'siteUrl')) || VERIFY_BASE).replace(/\/+$/, '');
     return await QRCode.toBuffer(`${base}/certification?id=${encodeURIComponent(ref)}`, {
       margin: 1, width: 280, color: { dark: '#1C6954', light: '#FFFFFF' },
     });
@@ -262,14 +260,14 @@ function infoRow(doc, label, value, y) {
 
 // ===================== PAYMENT RECEIPT =====================
 router.get('/download/receipt/:paymentId', authenticateToken, async (req, res) => {
-  const payment = db.prepare(`
+  const payment = await db.get(`
     SELECT p.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, i.title as internshipTitle, i.duration
     FROM payments p
     JOIN users u ON p.userId = u.id
     JOIN enrollments e ON p.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
     WHERE p.id = ? AND p.userId = ?
-  `).get(req.params.paymentId, req.user.id);
+  `, req.params.paymentId, req.user.id);
 
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.status !== 'completed') return res.status(403).json({ error: 'Payment not completed yet — receipts are issued after a successful payment.' });
@@ -337,21 +335,21 @@ router.get('/download/receipt/:paymentId', authenticateToken, async (req, res) =
 
 // ===================== OFFER LETTER =====================
 router.get('/download/offer-letter/:enrollmentId', authenticateToken, async (req, res) => {
-  const enrollment = db.prepare(`
+  const enrollment = await db.get(`
     SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, i.title as internshipTitle, i.duration
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
     WHERE e.id = ? AND e.userId = ?
-  `).get(req.params.enrollmentId, req.user.id);
+  `, req.params.enrollmentId, req.user.id);
 
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!hasPaidAccess(enrollment.id, req.user.id)) {
+  if (!(await hasPaidAccess(enrollment.id, req.user.id))) {
     return res.status(403).json({ error: 'Complete payment to download the offer letter.' });
   }
 
   const hadOfferNo = !!enrollment.offerNo;
-  const offerNo = ensureEnrollmentNumber(db, enrollment, 'offerNo');
+  const offerNo = await ensureEnrollmentNumber(db, enrollment, 'offerNo');
   if (!hadOfferNo) registry.enqueueEnrollment(enrollment.id);
   const qrBuffer = await makeQr(offerNo);
   const doc = startPdf(res, `offer-letter-${enrollment.id}.pdf`, { watermark: 'OFFER LETTER' });
@@ -425,7 +423,7 @@ router.get('/download/offer-letter/:enrollmentId', authenticateToken, async (req
 
 // ===================== CERTIFICATE =====================
 router.get('/download/certificate/:certId', authenticateToken, async (req, res) => {
-  const cert = db.prepare(`
+  const cert = await db.get(`
     SELECT c.*, u.firstName, u.lastName, u.email, u.college, u.course, u.rollNo, u.regNo, u.university, u.year,
            i.title as internshipTitle, i.duration, i.modules, i.description, e.enrolledAt
     FROM certificates c
@@ -433,10 +431,10 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
     JOIN enrollments e ON c.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
     WHERE c.certificateId = ? AND c.userId = ?
-  `).get(req.params.certId, req.user.id);
+  `, req.params.certId, req.user.id);
 
   if (!cert) return res.status(404).json({ error: 'Certificate not found' });
-  if (!hasPaidAccess(cert.enrollmentId, req.user.id)) {
+  if (!(await hasPaidAccess(cert.enrollmentId, req.user.id))) {
     return res.status(403).json({ error: 'Complete payment to download the certificate.' });
   }
 
@@ -596,7 +594,7 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
 
 // ===================== PROJECT REPORT (multi-page, per-track) ==============
 router.get('/download/project-report/:enrollmentId', authenticateToken, async (req, res) => {
-  const enrollment = db.prepare(`
+  const enrollment = await db.get(`
     SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, u.year,
            u.rollNo, u.regNo, u.university,
            i.title as internshipTitle, i.topics, i.duration, i.modules, i.category, i.description
@@ -604,34 +602,31 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
     WHERE e.id = ? AND e.userId = ?
-  `).get(req.params.enrollmentId, req.user.id);
+  `, req.params.enrollmentId, req.user.id);
 
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!hasPaidAccess(enrollment.id, req.user.id)) {
+  if (!(await hasPaidAccess(enrollment.id, req.user.id))) {
     return res.status(403).json({ error: 'Complete payment to download the internship report.' });
   }
 
-  const cert = db.prepare('SELECT * FROM certificates WHERE enrollmentId = ?').get(enrollment.id);
-  const exam = db.prepare('SELECT * FROM exams WHERE enrollmentId = ? ORDER BY id DESC').get(enrollment.id);
-  const avgRow = db.prepare('SELECT AVG(score) as avgScore FROM exams WHERE internshipId = ? AND status = ?')
-    .get(enrollment.internshipId, 'completed');
+  const cert = await db.get('SELECT * FROM certificates WHERE enrollmentId = ?', enrollment.id);
+  const exam = await db.get('SELECT * FROM exams WHERE enrollmentId = ? ORDER BY id DESC', enrollment.id);
+  const avgRow = await db.get('SELECT AVG(score) as avgScore FROM exams WHERE internshipId = ? AND status = ?', enrollment.internshipId, 'completed');
 
   let completedIdx = [];
   try { completedIdx = JSON.parse(enrollment.completedModules || '[]'); } catch (e) { completedIdx = []; }
-  const moduleRows = db.prepare(
-    'SELECT title, durationMinutes, moduleOrder FROM learning_modules WHERE internshipId = ? ORDER BY moduleOrder'
-  ).all(enrollment.internshipId);
+  const moduleRows = await db.all('SELECT title, durationMinutes, moduleOrder FROM learning_modules WHERE internshipId = ? ORDER BY moduleOrder', enrollment.internshipId);
   const modules = moduleRows.map((m, i) => ({
     title: m.title,
     duration: m.durationMinutes ? `${Math.round(m.durationMinutes / 60 * 10) / 10} hrs` : '—',
     done: completedIdx.includes(m.moduleOrder != null ? m.moduleOrder : i) || completedIdx.includes(i),
   }));
 
-  const internship = db.prepare('SELECT * FROM internships WHERE id = ?').get(enrollment.internshipId);
+  const internship = await db.get('SELECT * FROM internships WHERE id = ?', enrollment.internshipId);
   const content = getReportContent(internship.category, internship);
 
   const hadReportNo = !!enrollment.reportNo;
-  const reportNo = ensureEnrollmentNumber(db, enrollment, 'reportNo');
+  const reportNo = await ensureEnrollmentNumber(db, enrollment, 'reportNo');
   if (!hadReportNo) registry.enqueueEnrollment(enrollment.id);
   const qrBuffer = await makeQr(reportNo);
   const duration = enrollment.duration || 30;
@@ -642,7 +637,7 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
     programTitle: enrollment.internshipTitle,
     companyName: companyName(),
     companyAddress: companyAddress(),
-    siteLabel: getSetting(db, 'siteUrl') || VERIFY_BASE,
+    siteLabel: (await getSetting(db, 'siteUrl')) || VERIFY_BASE,
     dateLabel: `Issued: ${fmt(new Date())}`,
     reportNo,
     studentName: `${enrollment.firstName} ${enrollment.lastName}`,
@@ -670,21 +665,21 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
 
 // ===================== ATTENDANCE SHEET =====================
 router.get('/download/attendance/:enrollmentId', authenticateToken, async (req, res) => {
-  const enrollment = db.prepare(`
+  const enrollment = await db.get(`
     SELECT e.*, u.firstName, u.lastName, u.college, i.title as internshipTitle, i.duration
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
     WHERE e.id = ? AND e.userId = ?
-  `).get(req.params.enrollmentId, req.user.id);
+  `, req.params.enrollmentId, req.user.id);
 
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!hasPaidAccess(enrollment.id, req.user.id)) {
+  if (!(await hasPaidAccess(enrollment.id, req.user.id))) {
     return res.status(403).json({ error: 'Complete payment to download the attendance sheet.' });
   }
 
   const hadAttendanceNo = !!enrollment.attendanceNo;
-  const attendanceNo = ensureEnrollmentNumber(db, enrollment, 'attendanceNo');
+  const attendanceNo = await ensureEnrollmentNumber(db, enrollment, 'attendanceNo');
   if (!hadAttendanceNo) registry.enqueueEnrollment(enrollment.id);
   const qrBuffer = await makeQr(attendanceNo);
   const doc = startPdf(res, `attendance-${enrollment.id}.pdf`, { watermark: 'ATTENDANCE' });
@@ -700,7 +695,7 @@ router.get('/download/attendance/:enrollmentId', authenticateToken, async (req, 
 
   // Date range: forward = from registration onwards; backward = ends on the
   // download date and starts `duration` days earlier
-  const dateMode = getSetting(db, 'attendanceDateMode') === 'backward' ? 'backward' : 'forward';
+  const dateMode = (await getSetting(db, 'attendanceDateMode')) === 'backward' ? 'backward' : 'forward';
   const rowCount = Math.min(duration, 31);
   const today = new Date();
   const dateFor = (i) => {

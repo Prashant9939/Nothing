@@ -265,29 +265,29 @@ const questions = {
   ],
 };
 
-function seedQuestions(db) {
+async function seedQuestions(db) {
   const { extraQuestions } = require('./seedQuestionsExtra');
   const allQuestions = { ...questions, ...extraQuestions };
 
   // Tracks already handled (recorded in settings so admin deletions are never undone)
   let seededTracks = [];
   try {
-    const row = db.prepare("SELECT value FROM settings WHERE key = 'seededQuestionTracks'").get();
+    const row = await db.get("SELECT value FROM settings WHERE key = 'seededQuestionTracks'");
     if (row) seededTracks = JSON.parse(row.value || '[]');
   } catch (e) { /* settings table missing on very old DBs */ }
 
-  const insert = db.prepare('INSERT INTO questions (track, question, optionA, optionB, optionC, optionD, correct) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const insert = ('INSERT INTO questions (track, question, optionA, optionB, optionC, optionD, correct) VALUES (?, ?, ?, ?, ?, ?, ?)');
   let total = 0;
   const handled = new Set(seededTracks);
 
   for (const [track, qs] of Object.entries(allQuestions)) {
     if (handled.has(track)) continue;
-    const existing = db.prepare('SELECT COUNT(*) as count FROM questions WHERE track = ?').get(track).count;
+    const existing = (await db.get('SELECT COUNT(*) as count FROM questions WHERE track = ?', track)).count;
     if (existing === 0) {
-      const insertTrack = db.transaction(() => {
-        for (const q of qs) insert.run(track, q.q, q.a, q.b, q.c, q.d, q.correct);
+      const insertTrack = db.transaction(async () => {
+        for (const q of qs) await db.run(insert, track, q.q, q.a, q.b, q.c, q.d, q.correct);
       });
-      insertTrack();
+      await insertTrack();
       total += qs.length;
       console.log(`Seeded ${qs.length} questions for track: ${track}`);
     }
@@ -297,9 +297,9 @@ function seedQuestions(db) {
   if (total > 0) console.log(`Total questions seeded: ${total}`);
 
   const value = JSON.stringify([...handled]);
-  const marker = db.prepare("SELECT 1 AS ok FROM settings WHERE key = 'seededQuestionTracks'").get();
-  if (marker) db.prepare("UPDATE settings SET value = ? WHERE key = 'seededQuestionTracks'").run(value);
-  else db.prepare("INSERT INTO settings (key, value) VALUES ('seededQuestionTracks', ?)").run(value);
+  const marker = await db.get("SELECT 1 AS ok FROM settings WHERE key = 'seededQuestionTracks'");
+  if (marker) await db.run("UPDATE settings SET value = ? WHERE key = 'seededQuestionTracks'", value);
+  else await db.run("INSERT INTO settings (key, value) VALUES ('seededQuestionTracks', ?)", value);
 }
 
 module.exports = { seedQuestions, questions };

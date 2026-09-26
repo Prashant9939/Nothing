@@ -10,6 +10,9 @@ const cors = require('cors');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 
+const db = require('./db');
+const { refreshBrand } = require('./lib/documentBrand');
+
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const studentRoutes = require('./routes/student');
@@ -131,9 +134,18 @@ app.use((err, req, res, next) => {
   res.status(500).json(body);
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`API available at http://localhost:${PORT}/api`);
-});
+// The database (schema + seed data) must be ready before serving requests.
+db.ready
+  .then(async () => {
+    await refreshBrand();
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`API available at http://localhost:${PORT}/api`);
+    });
+  })
+  .catch((err) => {
+    console.error('Database initialization failed:', err);
+    process.exit(1);
+  });
 
 module.exports = app;

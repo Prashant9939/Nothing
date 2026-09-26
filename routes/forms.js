@@ -105,7 +105,7 @@ const VERIFY_BASE = (process.env.SITE_URL || `http://localhost:${process.env.POR
 
 async function makeVerifyQr() {
   try {
-    const base = (getSetting(db, 'siteUrl') || VERIFY_BASE).replace(/\/+$/, '');
+    const base = ((await getSetting(db, 'siteUrl')) || VERIFY_BASE).replace(/\/+$/, '');
     return await QRCode.toBuffer(`${base}/certification`, {
       margin: 1, width: 240, color: { dark: '#1C6954', light: '#FFFFFF' },
     });

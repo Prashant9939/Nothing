@@ -18,28 +18,27 @@ const isCourseCompleted = (enrollment) =>
   Number(enrollment.moduleCount) > 0 && Number(enrollment.courseProgress) >= 100;
 
 // ===================== STUDENT PROFILE =====================
-router.get('/profile', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE id = ?').get(req.user.id);
+router.get('/profile', authenticateToken, async (req, res) => {
+  const user = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE id = ?', req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({ user });
 });
 
-router.put('/profile', authenticateToken, (req, res) => {
+router.put('/profile', authenticateToken, async (req, res) => {
   const { firstName, lastName, phone, university, college, course, year } = req.body;
-  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(req.user.id);
+  const user = await db.get('SELECT id FROM users WHERE id = ?', req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  db.prepare('UPDATE users SET firstName = ?, lastName = ?, phone = ?, university = ?, college = ?, course = ?, year = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?')
-    .run(firstName, lastName, phone, university, college, course, year, req.user.id);
+  await db.run('UPDATE users SET firstName = ?, lastName = ?, phone = ?, university = ?, college = ?, course = ?, year = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', firstName, lastName, phone, university, college, course, year, req.user.id);
   registry.enqueueStudent(req.user.id);
 
-  const updated = db.prepare('SELECT id, firstName, lastName, email, phone, university, college, course, year, role FROM users WHERE id = ?').get(req.user.id);
+  const updated = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role FROM users WHERE id = ?', req.user.id);
   res.json({ message: 'Profile updated', user: updated });
 });
 
 router.put('/change-password', authenticateToken, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
-  const user = db.prepare('SELECT password FROM users WHERE id = ?').get(req.user.id);
+  const user = await db.get('SELECT password FROM users WHERE id = ?', req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const valid = await bcrypt.compare(currentPassword, user.password);
@@ -47,30 +46,30 @@ router.put('/change-password', authenticateToken, async (req, res) => {
 
   const salt = await bcrypt.genSalt(12);
   const hashed = await bcrypt.hash(newPassword, salt);
-  db.prepare('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(hashed, req.user.id);
+  await db.run('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', hashed, req.user.id);
 
   res.json({ message: 'Password changed successfully' });
 });
 
 // ===================== STUDENT DASHBOARD =====================
-router.get('/dashboard', authenticateToken, (req, res) => {
-  const enrollments = db.prepare(`
+router.get('/dashboard', authenticateToken, async (req, res) => {
+  const enrollments = await db.all(`
     SELECT e.*, i.title as internshipTitle, i.category, i.duration, i.modules, i.topics
     FROM enrollments e
     JOIN internships i ON e.internshipId = i.id
     WHERE e.userId = ?
     ORDER BY e.enrolledAt DESC
-  `).all(req.user.id);
+  `, req.user.id);
 
-  const payments = db.prepare(`
+  const payments = await db.all(`
     SELECT p.*, i.title as internshipTitle
     FROM payments p
     JOIN internships i ON i.id = p.internshipId
     WHERE p.userId = ?
     ORDER BY p.createdAt DESC
-  `).all(req.user.id);
+  `, req.user.id);
 
-  const exams = db.prepare(`
+  const exams = (await db.all(`
     SELECT e.*, i.title as internshipTitle, en.progress as courseProgress, en.status as enrollmentStatus,
       (SELECT COUNT(*) FROM learning_modules lm WHERE lm.internshipId = i.id) as moduleCount
     FROM exams e
@@ -78,51 +77,51 @@ router.get('/dashboard', authenticateToken, (req, res) => {
     JOIN enrollments en ON en.id = e.enrollmentId
     WHERE e.userId = ?
     ORDER BY e.id DESC
-  `).all(req.user.id).map(exam => ({ ...exam, courseCompleted: isCourseCompleted(exam) }));
+  `, req.user.id)).map(exam => ({ ...exam, courseCompleted: isCourseCompleted(exam) }));
 
-  const certificates = db.prepare(`
+  const certificates = await db.all(`
     SELECT c.*, i.title as internshipTitle
     FROM certificates c
     JOIN enrollments e ON c.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
     WHERE c.userId = ?
-  `).all(req.user.id);
+  `, req.user.id);
 
   res.json({ enrollments, payments, exams, certificates });
 });
 
 // ===================== ENROLLMENT STATUS CHECK =====================
-router.get('/enrollment-status', authenticateToken, (req, res) => {
-  const enrollment = db.prepare(`
+router.get('/enrollment-status', authenticateToken, async (req, res) => {
+  const enrollment = await db.get(`
     SELECT e.*, i.title as internshipTitle
     FROM enrollments e
     JOIN internships i ON e.internshipId = i.id
     WHERE e.userId = ? AND e.status IN ('active', 'completed')
     ORDER BY e.enrolledAt DESC LIMIT 1
-  `).get(req.user.id);
+  `, req.user.id);
 
   res.json({ hasEnrollment: !!enrollment, enrollment: enrollment || null });
 });
 
 // ===================== SINGLE ENROLLMENT WITH MODULES =====================
-router.get('/enrollment/:id', authenticateToken, (req, res) => {
-  const enrollment = db.prepare(`
+router.get('/enrollment/:id', authenticateToken, async (req, res) => {
+  const enrollment = await db.get(`
     SELECT e.*, i.title as internshipTitle, i.category, i.duration, i.modules, i.topics
     FROM enrollments e
     JOIN internships i ON e.internshipId = i.id
     WHERE e.id = ? AND e.userId = ?
-  `).get(req.params.id, req.user.id);
+  `, req.params.id, req.user.id);
 
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
   res.json({ enrollment });
 });
 
 // ===================== COMPLETE MODULE =====================
-router.post('/complete-module/:enrollmentId', authenticateToken, (req, res) => {
-  const enrollment = db.prepare(`
+router.post('/complete-module/:enrollmentId', authenticateToken, async (req, res) => {
+  const enrollment = await db.get(`
     SELECT e.* FROM enrollments e
     WHERE e.id = ? AND e.userId = ?
-  `).get(req.params.enrollmentId, req.user.id);
+  `, req.params.enrollmentId, req.user.id);
 
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
 
@@ -134,22 +133,21 @@ router.post('/complete-module/:enrollmentId', authenticateToken, (req, res) => {
     completed.push(moduleIndex);
   }
 
-  const totalModules = db.prepare('SELECT COUNT(*) as count FROM learning_modules WHERE internshipId = ?').get(enrollment.internshipId);
+  const totalModules = await db.get('SELECT COUNT(*) as count FROM learning_modules WHERE internshipId = ?', enrollment.internshipId);
   const progress = totalModules.count > 0 ? Math.round((completed.length / totalModules.count) * 100) : 0;
 
-  db.prepare('UPDATE enrollments SET completedModules = ?, progress = ? WHERE id = ?')
-    .run(JSON.stringify(completed), progress, enrollment.id);
+  await db.run('UPDATE enrollments SET completedModules = ?, progress = ? WHERE id = ?', JSON.stringify(completed), progress, enrollment.id);
   registry.enqueueEnrollment(enrollment.id);
 
   res.json({ message: 'Module completed', completedModules: completed, progress });
 });
 
 // ===================== UNCOMPLETE MODULE =====================
-router.post('/uncomplete-module/:enrollmentId', authenticateToken, (req, res) => {
-  const enrollment = db.prepare(`
+router.post('/uncomplete-module/:enrollmentId', authenticateToken, async (req, res) => {
+  const enrollment = await db.get(`
     SELECT e.* FROM enrollments e
     WHERE e.id = ? AND e.userId = ?
-  `).get(req.params.enrollmentId, req.user.id);
+  `, req.params.enrollmentId, req.user.id);
 
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
 
@@ -159,22 +157,21 @@ router.post('/uncomplete-module/:enrollmentId', authenticateToken, (req, res) =>
 
   completed = completed.filter(i => i !== moduleIndex);
 
-  const totalModules = db.prepare('SELECT COUNT(*) as count FROM learning_modules WHERE internshipId = ?').get(enrollment.internshipId);
+  const totalModules = await db.get('SELECT COUNT(*) as count FROM learning_modules WHERE internshipId = ?', enrollment.internshipId);
   const progress = totalModules.count > 0 ? Math.round((completed.length / totalModules.count) * 100) : 0;
 
-  db.prepare('UPDATE enrollments SET completedModules = ?, progress = ? WHERE id = ?')
-    .run(JSON.stringify(completed), progress, enrollment.id);
+  await db.run('UPDATE enrollments SET completedModules = ?, progress = ? WHERE id = ?', JSON.stringify(completed), progress, enrollment.id);
   registry.enqueueEnrollment(enrollment.id);
 
   res.json({ message: 'Module uncompleted', completedModules: completed, progress });
 });
 
 // ===================== AVAILABLE INTERNSHIPS =====================
-router.get('/internships', authenticateToken, (req, res) => {
-  const internships = db.prepare('SELECT * FROM internships WHERE isActive = 1 ORDER BY createdAt DESC').all();
+router.get('/internships', authenticateToken, async (req, res) => {
+  const internships = await db.all('SELECT * FROM internships WHERE isActive = 1 ORDER BY createdAt DESC');
 
   // Check which ones user is enrolled in
-  const enrolled = db.prepare('SELECT internshipId FROM enrollments WHERE userId = ?').all(req.user.id);
+  const enrolled = await db.all('SELECT internshipId FROM enrollments WHERE userId = ?', req.user.id);
   const enrolledIds = enrolled.map(e => e.internshipId);
 
   const internshipsWithStatus = internships.map(i => ({
@@ -190,40 +187,39 @@ router.get('/internships', authenticateToken, (req, res) => {
 // enrollment row is created later by lib/payments.js — strictly after the
 // payment is verified successful — so a pending payment can never surface
 // anywhere as "already enrolled".
-router.post('/enroll', authenticateToken, (req, res) => {
+router.post('/enroll', authenticateToken, async (req, res) => {
   const { internshipId } = req.body;
   if (!internshipId) return res.status(400).json({ error: 'Internship ID required' });
 
-  const internship = db.prepare('SELECT * FROM internships WHERE id = ?').get(internshipId);
+  const internship = await db.get('SELECT * FROM internships WHERE id = ?', internshipId);
   if (!internship) return res.status(404).json({ error: 'Internship not found' });
 
-  const existing = db.prepare('SELECT * FROM enrollments WHERE userId = ? AND internshipId = ?').get(req.user.id, internshipId);
+  const existing = await db.get('SELECT * FROM enrollments WHERE userId = ? AND internshipId = ?', req.user.id, internshipId);
   if (existing) return res.status(409).json({ error: 'Already enrolled in this internship' });
 
   // Reuse an unpaid invoice for this track instead of stacking duplicates —
   // and re-price it, since it still hasn't been paid and the price may have changed
-  const pending = db.prepare("SELECT * FROM payments WHERE userId = ? AND internshipId = ? AND status = 'pending' ORDER BY id DESC").get(req.user.id, internshipId);
+  const pending = await db.get("SELECT * FROM payments WHERE userId = ? AND internshipId = ? AND status = 'pending' ORDER BY id DESC", req.user.id, internshipId);
   if (pending) {
     if (pending.amount !== internship.price) {
-      db.prepare('UPDATE payments SET amount = ? WHERE id = ?').run(internship.price, pending.id);
+      await db.run('UPDATE payments SET amount = ? WHERE id = ?', internship.price, pending.id);
       pending.amount = internship.price;
       registry.enqueuePayment(pending.id);
     }
     return res.json({ message: 'Payment pending for this internship.', payment: pending });
   }
 
-  const paymentResult = db.prepare('INSERT INTO payments (userId, enrollmentId, internshipId, amount, receiptNumber, status) VALUES (?, NULL, ?, ?, ?, ?)')
-    .run(req.user.id, internshipId, internship.price, newReceiptNumber(db), 'pending');
+  const paymentResult = await db.run('INSERT INTO payments (userId, enrollmentId, internshipId, amount, receiptNumber, status) VALUES (?, NULL, ?, ?, ?, ?)', req.user.id, internshipId, internship.price, await newReceiptNumber(db), 'pending');
   registry.enqueuePayment(paymentResult.lastInsertRowid);
 
-  const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(paymentResult.lastInsertRowid);
+  const payment = await db.get('SELECT * FROM payments WHERE id = ?', paymentResult.lastInsertRowid);
   res.status(201).json({ message: 'Payment pending. Complete the payment to enroll.', payment });
 });
 
 // Create a Razorpay order for this payment. The amount always comes from the
 // database — the client can never submit its own price.
 router.post('/pay/:paymentId/order', authenticateToken, async (req, res) => {
-  const payment = db.prepare('SELECT * FROM payments WHERE id = ? AND userId = ?').get(req.params.paymentId, req.user.id);
+  const payment = await db.get('SELECT * FROM payments WHERE id = ? AND userId = ?', req.params.paymentId, req.user.id);
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.status === 'completed') return res.status(409).json({ error: 'Payment already completed' });
 
@@ -236,7 +232,7 @@ router.post('/pay/:paymentId/order', authenticateToken, async (req, res) => {
         receipt: payment.receiptNumber,
         notes: { paymentId: String(payment.id), enrollmentId: String(payment.enrollmentId) },
       });
-      db.prepare("UPDATE payments SET razorpayOrderId = ?, method = 'razorpay' WHERE id = ?").run(order.id, payment.id);
+      await db.run("UPDATE payments SET razorpayOrderId = ?, method = 'razorpay' WHERE id = ?", order.id, payment.id);
       return res.json({
         demo: false,
         orderId: order.id,
@@ -258,13 +254,13 @@ router.post('/pay/:paymentId/order', authenticateToken, async (req, res) => {
 
 // Verify the Razorpay checkout signature. This is the ONLY way a payment can
 // be completed — there is no route that marks a payment paid on its own.
-router.post('/pay/:paymentId/verify', authenticateToken, (req, res) => {
+router.post('/pay/:paymentId/verify', authenticateToken, async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
   if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
     return res.status(400).json({ error: 'Missing payment verification details' });
   }
 
-  const payment = db.prepare('SELECT * FROM payments WHERE id = ? AND userId = ?').get(req.params.paymentId, req.user.id);
+  const payment = await db.get('SELECT * FROM payments WHERE id = ? AND userId = ?', req.params.paymentId, req.user.id);
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.status === 'completed') return res.json({ message: 'Payment already completed', payment });
 
@@ -278,7 +274,7 @@ router.post('/pay/:paymentId/verify', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Payment verification failed' });
   }
 
-  const updated = completePayment(payment, {
+  const updated = await completePayment(payment, {
     transactionId: razorpay_payment_id,
     razorpayOrderId: razorpay_order_id,
     razorpayPaymentId: razorpay_payment_id,
@@ -287,30 +283,30 @@ router.post('/pay/:paymentId/verify', authenticateToken, (req, res) => {
 });
 
 // ===================== EXAM =====================
-router.get('/exam/:enrollmentId', authenticateToken, (req, res) => {
-  const exam = db.prepare(`
+router.get('/exam/:enrollmentId', authenticateToken, async (req, res) => {
+  const exam = await db.get(`
     SELECT e.*, i.title as internshipTitle, i.topics, en.progress as courseProgress, en.status as enrollmentStatus,
       (SELECT COUNT(*) FROM learning_modules lm WHERE lm.internshipId = i.id) as moduleCount
     FROM exams e
     JOIN internships i ON e.internshipId = i.id
     JOIN enrollments en ON en.id = e.enrollmentId AND en.userId = e.userId
     WHERE e.enrollmentId = ? AND e.userId = ?
-  `).get(req.params.enrollmentId, req.user.id);
+  `, req.params.enrollmentId, req.user.id);
 
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
   exam.courseCompleted = isCourseCompleted(exam);
   res.json({ exam });
 });
 
-router.post('/exam/:examId/start', authenticateToken, (req, res) => {
-  const exam = db.prepare(`
+router.post('/exam/:examId/start', authenticateToken, async (req, res) => {
+  const exam = await db.get(`
     SELECT e.*, i.category, en.progress as courseProgress, en.status as enrollmentStatus,
       (SELECT COUNT(*) FROM learning_modules lm WHERE lm.internshipId = i.id) as moduleCount
     FROM exams e
     JOIN internships i ON e.internshipId = i.id
     JOIN enrollments en ON en.id = e.enrollmentId AND en.userId = e.userId
     WHERE e.id = ? AND e.userId = ?
-  `).get(req.params.examId, req.user.id);
+  `, req.params.examId, req.user.id);
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
   if (exam.status === 'completed' || exam.status === 'failed') {
     return res.status(400).json({ error: 'Exam already completed. Check your result on the dashboard.' });
@@ -325,8 +321,7 @@ router.post('/exam/:examId/start', authenticateToken, (req, res) => {
     });
   }
 
-  const questions = db.prepare('SELECT id, question, optionA, optionB, optionC, optionD FROM questions WHERE track = ? AND isActive = 1 ORDER BY RANDOM() LIMIT ?')
-    .all(exam.category, exam.totalQuestions);
+  const questions = await db.all('SELECT id, question, optionA, optionB, optionC, optionD FROM questions WHERE track = ? AND isActive = 1 ORDER BY RANDOM() LIMIT ?', exam.category, exam.totalQuestions);
 
   if (questions.length === 0) {
     return res.status(400).json({ error: 'No questions available for this track. Please contact admin.' });
@@ -338,23 +333,23 @@ router.post('/exam/:examId/start', authenticateToken, (req, res) => {
     options: [q.optionA, q.optionB, q.optionC, q.optionD],
   }));
 
-  db.prepare("UPDATE exams SET status = 'in_progress', startedAt = CURRENT_TIMESTAMP WHERE id = ?").run(exam.id);
+  await db.run("UPDATE exams SET status = 'in_progress', startedAt = CURRENT_TIMESTAMP WHERE id = ?", exam.id);
   res.json({ message: 'Exam started', questions: questionsForClient, duration: exam.duration, totalQuestions: questions.length });
 });
 
-router.post('/exam/:examId/submit', authenticateToken, (req, res) => {
+router.post('/exam/:examId/submit', authenticateToken, async (req, res) => {
   const { answers } = req.body;
-  const exam = db.prepare(`
+  const exam = await db.get(`
     SELECT e.*, i.category
     FROM exams e
     JOIN internships i ON e.internshipId = i.id
     WHERE e.id = ? AND e.userId = ?
-  `).get(req.params.examId, req.user.id);
+  `, req.params.examId, req.user.id);
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
   if (exam.status !== 'in_progress') return res.status(400).json({ error: 'Exam is not in progress' });
 
   // Fetch correct answers from DB
-  const dbQuestions = db.prepare('SELECT id, correct FROM questions WHERE track = ? AND isActive = 1').all(exam.category);
+  const dbQuestions = await db.all('SELECT id, correct FROM questions WHERE track = ? AND isActive = 1', exam.category);
   const correctMap = {};
   dbQuestions.forEach(q => { correctMap[q.id] = q.correct; });
 
@@ -374,28 +369,26 @@ router.post('/exam/:examId/submit', authenticateToken, (req, res) => {
   const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
   const status = percentage >= 40 ? 'completed' : 'failed';
 
-  db.prepare("UPDATE exams SET status = ?, score = ?, answers = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?")
-    .run(status, percentage, JSON.stringify(answers || []), exam.id);
+  await db.run("UPDATE exams SET status = ?, score = ?, answers = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?", status, percentage, JSON.stringify(answers || []), exam.id);
 
   if (status === 'completed') {
-    const existingCert = db.prepare('SELECT id FROM certificates WHERE enrollmentId = ?').get(exam.enrollmentId);
+    const existingCert = await db.get('SELECT id FROM certificates WHERE enrollmentId = ?', exam.enrollmentId);
     if (!existingCert) {
       const grade = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B+' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : 'D';
       let certId;
       let isUnique = false;
       while (!isUnique) {
         certId = `IQI-${new Date().getFullYear()}-${crypto.randomBytes(4).readUInt32BE(0) % 1000000}`;
-        const existing = db.prepare('SELECT id FROM certificates WHERE certificateId = ?').get(certId);
+        const existing = await db.get('SELECT id FROM certificates WHERE certificateId = ?', certId);
         if (!existing) isUnique = true;
       }
-      db.prepare('INSERT INTO certificates (userId, enrollmentId, examId, certificateId, grade, score) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(req.user.id, exam.enrollmentId, exam.id, certId, grade, percentage);
+      await db.run('INSERT INTO certificates (userId, enrollmentId, examId, certificateId, grade, score) VALUES (?, ?, ?, ?, ?, ?)', req.user.id, exam.enrollmentId, exam.id, certId, grade, percentage);
     }
-    db.prepare("UPDATE enrollments SET status = 'completed' WHERE id = ?").run(exam.enrollmentId);
+    await db.run("UPDATE enrollments SET status = 'completed' WHERE id = ?", exam.enrollmentId);
     registry.enqueueEnrollment(exam.enrollmentId);
   }
 
-  const updatedExam = db.prepare('SELECT * FROM exams WHERE id = ?').get(exam.id);
+  const updatedExam = await db.get('SELECT * FROM exams WHERE id = ?', exam.id);
   res.json({ message: 'Exam submitted', exam: updatedExam, score: percentage, total, correct: score, status });
 });
 
@@ -403,17 +396,17 @@ router.post('/exam/:examId/submit', authenticateToken, (req, res) => {
 router.use(require('./documents'));
 
 // ===================== LEARNING MODULES =====================
-router.get('/learning-modules/:internshipId', authenticateToken, (req, res) => {
+router.get('/learning-modules/:internshipId', authenticateToken, async (req, res) => {
   const internshipId = parseInt(req.params.internshipId);
   if (isNaN(internshipId)) return res.status(400).json({ error: 'Invalid internship ID' });
 
-  const modules = db.prepare(`
+  const modules = await db.all(`
     SELECT id, internshipId, title, description, moduleOrder, durationMinutes, difficulty, topics,
            learningObjectives, contentSections, quizQuestions, resources, videoUrl
     FROM learning_modules
     WHERE internshipId = ?
     ORDER BY moduleOrder ASC
-  `).all(internshipId);
+  `, internshipId);
   
   // Parse JSON fields for each module
   const parsed = modules.map(m => ({
@@ -428,13 +421,13 @@ router.get('/learning-modules/:internshipId', authenticateToken, (req, res) => {
   res.json({ modules: parsed });
 });
 
-router.get('/learning-module/:moduleId', authenticateToken, (req, res) => {
+router.get('/learning-module/:moduleId', authenticateToken, async (req, res) => {
   const moduleId = parseInt(req.params.moduleId);
   if (isNaN(moduleId)) return res.status(400).json({ error: 'Invalid module ID' });
 
-  const module = db.prepare(`
+  const module = await db.get(`
     SELECT * FROM learning_modules WHERE id = ?
-  `).get(moduleId);
+  `, moduleId);
   
   if (!module) return res.status(404).json({ error: 'Module not found' });
   
@@ -448,18 +441,18 @@ router.get('/learning-module/:moduleId', authenticateToken, (req, res) => {
   res.json({ module });
 });
 
-router.get('/learning-progress/:internshipId', authenticateToken, (req, res) => {
+router.get('/learning-progress/:internshipId', authenticateToken, async (req, res) => {
   const internshipId = parseInt(req.params.internshipId);
   if (isNaN(internshipId)) return res.status(400).json({ error: 'Invalid internship ID' });
 
-  const modules = db.prepare(`
+  const modules = await db.all(`
     SELECT id FROM learning_modules WHERE internshipId = ?
-  `).all(internshipId);
+  `, internshipId);
   
-  const enrollment = db.prepare(`
+  const enrollment = await db.get(`
     SELECT completedModules FROM enrollments
     WHERE userId = ? AND internshipId = ?
-  `).get(req.user.id, internshipId);
+  `, req.user.id, internshipId);
   
   let completed = [];
   if (enrollment) {

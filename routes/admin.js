@@ -5,11 +5,12 @@ const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const registry = require('../lib/supabaseRegistry');
 const { completePayment } = require('../lib/payments');
+const { refreshBrand } = require('../lib/documentBrand');
 
 const router = express.Router();
 
 // Admin middleware
-const adminOnly = (req, res, next) => {
+const adminOnly = async (req, res, next) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
@@ -17,33 +18,33 @@ const adminOnly = (req, res, next) => {
 };
 
 // ===================== DASHBOARD STATS =====================
-router.get('/dashboard', authenticateToken, adminOnly, (req, res) => {
+router.get('/dashboard', authenticateToken, adminOnly, async (req, res) => {
   const stats = {
-    totalStudents: db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student'").get().count,
-    totalInternships: db.prepare('SELECT COUNT(*) as count FROM internships').get().count,
-    totalEnrollments: db.prepare('SELECT COUNT(*) as count FROM enrollments').get().count,
-    totalRevenue: db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed'").get().total,
-    pendingPayments: db.prepare("SELECT COUNT(*) as count FROM payments WHERE status = 'pending'").get().count,
-    completedExams: db.prepare("SELECT COUNT(*) as count FROM exams WHERE status = 'completed'").get().count,
-    certificatesIssued: db.prepare('SELECT COUNT(*) as count FROM certificates').get().count,
-    activeStudents: db.prepare("SELECT COUNT(*) as count FROM enrollments WHERE status = 'active'").get().count,
+    totalStudents: (await db.get("SELECT COUNT(*) as count FROM users WHERE role = 'student'")).count,
+    totalInternships: (await db.get('SELECT COUNT(*) as count FROM internships')).count,
+    totalEnrollments: (await db.get('SELECT COUNT(*) as count FROM enrollments')).count,
+    totalRevenue: (await db.get("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed'")).total,
+    pendingPayments: (await db.get("SELECT COUNT(*) as count FROM payments WHERE status = 'pending'")).count,
+    completedExams: (await db.get("SELECT COUNT(*) as count FROM exams WHERE status = 'completed'")).count,
+    certificatesIssued: (await db.get('SELECT COUNT(*) as count FROM certificates')).count,
+    activeStudents: (await db.get("SELECT COUNT(*) as count FROM enrollments WHERE status = 'active'")).count,
   };
 
-  const recentEnrollments = db.prepare(`
+  const recentEnrollments = await db.all(`
     SELECT e.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
     ORDER BY e.enrolledAt DESC LIMIT 10
-  `).all();
+  `);
 
-  const recentPayments = db.prepare(`
+  const recentPayments = await db.all(`
     SELECT p.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
     FROM payments p
     JOIN users u ON p.userId = u.id
     JOIN internships i ON i.id = p.internshipId
     ORDER BY p.createdAt DESC LIMIT 10
-  `).all();
+  `);
 
   res.json({ stats, recentEnrollments, recentPayments });
 });
@@ -62,7 +63,7 @@ const utcStamp = (d) =>
 const localDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const localHour = (d) => `${localDay(d)} ${pad2(d.getHours())}:00`;
 
-router.get('/analytics', authenticateToken, adminOnly, (req, res) => {
+router.get('/analytics', authenticateToken, adminOnly, async (req, res) => {
   const range = ANALYTICS_RANGES[req.query.range] ? req.query.range : '7d';
   const { days, hourly } = ANALYTICS_RANGES[range];
 
@@ -76,9 +77,9 @@ router.get('/analytics', authenticateToken, adminOnly, (req, res) => {
 
   // Per-bucket traffic series (local time buckets)
   const bucketExpr = hourly
-    ? "strftime('%Y-%m-%d %H:00', createdAt, 'localtime')"
-    : "date(createdAt, 'localtime')";
-  const eventRows = db.prepare(`
+    ? "to_char(NULLIF(createdAt, '')::timestamp, 'YYYY-MM-DD HH24:00')"
+    : "to_char(NULLIF(createdAt, '')::timestamp, 'YYYY-MM-DD')";
+  const eventRows = await db.all(`
     SELECT ${bucketExpr} AS bucket,
            COUNT(DISTINCT visitorId) AS visitors,
            COALESCE(SUM(CASE WHEN type = 'click' THEN 1 ELSE 0 END), 0) AS clicks,
@@ -87,43 +88,43 @@ router.get('/analytics', authenticateToken, adminOnly, (req, res) => {
     FROM analytics_events
     WHERE createdAt >= ?
     GROUP BY bucket
-  `).all(startStamp);
+  `, startStamp);
 
   // Window totals — current period and the equally-long previous period (deltas)
-  const eventTotals = (from, to) => db.prepare(`
+  const eventTotals = async (from, to) => await db.get(`
     SELECT COUNT(DISTINCT visitorId) AS visitors,
            COALESCE(SUM(CASE WHEN type = 'click' THEN 1 ELSE 0 END), 0) AS clicks,
            COALESCE(SUM(CASE WHEN type = 'pageview' THEN 1 ELSE 0 END), 0) AS pageviews,
            COALESCE(SUM(CASE WHEN type = 'visit' THEN 1 ELSE 0 END), 0) AS visits
     FROM analytics_events
     WHERE createdAt >= ?${to ? ' AND createdAt < ?' : ''}
-  `).get(...(to ? [from, to] : [from])) || {};
+  `, ...(to ? [from, to] : [from])) || {};
 
-  const summary = { ...eventTotals(startStamp) };
-  const previous = { ...eventTotals(prevStartStamp, startStamp) };
+  const summary = { ...(await eventTotals(startStamp)) };
+  const previous = { ...(await eventTotals(prevStartStamp, startStamp)) };
   summary.avgClicks = summary.visitors ? Math.round((summary.clicks / summary.visitors) * 10) / 10 : 0;
   previous.avgClicks = previous.visitors ? Math.round((previous.clicks / previous.visitors) * 10) / 10 : 0;
 
   // Business metrics for the same windows
-  const bizTotals = (from, to) => db.prepare(`
+  const bizTotals = async (from, to) => await db.get(`
     SELECT (SELECT COUNT(*) FROM users WHERE createdAt >= ?${to ? ' AND createdAt < ?' : ''}) AS signups,
            (SELECT COUNT(*) FROM payments WHERE status = 'completed' AND paidAt >= ?${to ? ' AND paidAt < ?' : ''}) AS enrollments,
            (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'completed' AND paidAt >= ?${to ? ' AND paidAt < ?' : ''}) AS revenue
-  `).get(...(to ? [from, to, from, to, from, to] : [from, from, from])) || {};
-  Object.assign(summary, bizTotals(startStamp));
-  Object.assign(previous, bizTotals(prevStartStamp, startStamp));
+  `, ...(to ? [from, to, from, to, from, to] : [from, from, from])) || {};
+  Object.assign(summary, await bizTotals(startStamp));
+  Object.assign(previous, await bizTotals(prevStartStamp, startStamp));
 
-  const signupRows = db.prepare(`
+  const signupRows = await db.all(`
     SELECT ${bucketExpr} AS bucket, COUNT(*) AS signups
     FROM users WHERE createdAt >= ? GROUP BY bucket
-  `).all(startStamp);
-  const revenueRows = db.prepare(`
-    SELECT ${hourly ? "strftime('%Y-%m-%d %H:00', paidAt, 'localtime')" : "date(paidAt, 'localtime')"} AS bucket,
+  `, startStamp);
+  const revenueRows = await db.all(`
+    SELECT ${hourly ? "to_char(NULLIF(paidAt, '')::timestamp, 'YYYY-MM-DD HH24:00')" : "to_char(NULLIF(paidAt, '')::timestamp, 'YYYY-MM-DD')"} AS bucket,
            COUNT(*) AS enrollments, COALESCE(SUM(amount), 0) AS revenue
     FROM payments WHERE status = 'completed' AND paidAt >= ? GROUP BY bucket
-  `).all(startStamp);
+  `, startStamp);
 
-  const topPages = db.prepare(`
+  const topPages = await db.all(`
     SELECT path,
            COALESCE(SUM(CASE WHEN type = 'pageview' THEN 1 ELSE 0 END), 0) AS views,
            COALESCE(SUM(CASE WHEN type = 'click' THEN 1 ELSE 0 END), 0) AS clicks
@@ -132,7 +133,7 @@ router.get('/analytics', authenticateToken, adminOnly, (req, res) => {
     GROUP BY path
     ORDER BY views DESC, clicks DESC
     LIMIT 8
-  `).all(startStamp);
+  `, startStamp);
 
   // Fill every bucket so charts render continuous series
   const eventMap = new Map(eventRows.map((r) => [r.bucket, r]));
@@ -165,37 +166,37 @@ router.get('/analytics', authenticateToken, adminOnly, (req, res) => {
 });
 
 // ===================== INTERNSHIPS CRUD =====================
-router.get('/internships', authenticateToken, adminOnly, (req, res) => {
-  const internships = db.prepare('SELECT * FROM internships ORDER BY createdAt DESC').all();
+router.get('/internships', authenticateToken, adminOnly, async (req, res) => {
+  const internships = await db.all('SELECT * FROM internships ORDER BY createdAt DESC');
   res.json({ internships });
 });
 
-router.get('/internships/:id', authenticateToken, adminOnly, (req, res) => {
-  const internship = db.prepare('SELECT * FROM internships WHERE id = ?').get(req.params.id);
+router.get('/internships/:id', authenticateToken, adminOnly, async (req, res) => {
+  const internship = await db.get('SELECT * FROM internships WHERE id = ?', req.params.id);
   if (!internship) return res.status(404).json({ error: 'Internship not found' });
   res.json({ internship });
 });
 
-router.post('/internships', authenticateToken, adminOnly, (req, res) => {
+router.post('/internships', authenticateToken, adminOnly, async (req, res) => {
   const { title, description, category, duration, price, originalPrice, modules, topics, examDate } = req.body;
   if (!title || !description || !category || !price) {
     return res.status(400).json({ error: 'Title, description, category, and price are required' });
   }
-  const result = db.prepare(`
+  const result = await db.run(`
     INSERT INTO internships (title, description, category, duration, price, originalPrice, modules, topics, examDate)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(title, description, category, duration || 28, price, originalPrice || price, modules || 10, topics || '', examDate || null);
+  `, title, description, category, duration || 28, price, originalPrice || price, modules || 10, topics || '', examDate || null);
 
-  const internship = db.prepare('SELECT * FROM internships WHERE id = ?').get(result.lastInsertRowid);
+  const internship = await db.get('SELECT * FROM internships WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ message: 'Internship created', internship });
 });
 
-router.put('/internships/:id', authenticateToken, adminOnly, (req, res) => {
+router.put('/internships/:id', authenticateToken, adminOnly, async (req, res) => {
   const { title, description, category, duration, price, originalPrice, modules, topics, isActive, examDate } = req.body;
-  const existing = db.prepare('SELECT * FROM internships WHERE id = ?').get(req.params.id);
+  const existing = await db.get('SELECT * FROM internships WHERE id = ?', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Internship not found' });
 
-  db.prepare(`
+  await db.run(`
     UPDATE internships
     SET title = COALESCE(?, title),
         description = COALESCE(?, description),
@@ -209,30 +210,29 @@ router.put('/internships/:id', authenticateToken, adminOnly, (req, res) => {
         examDate = COALESCE(?, examDate),
         updatedAt = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(title, description, category, duration, price, originalPrice, modules, topics, isActive, examDate, req.params.id);
+  `, title, description, category, duration, price, originalPrice, modules, topics, isActive, examDate, req.params.id);
 
-  const internship = db.prepare('SELECT * FROM internships WHERE id = ?').get(req.params.id);
+  const internship = await db.get('SELECT * FROM internships WHERE id = ?', req.params.id);
   res.json({ message: 'Internship updated', internship });
 });
 
-router.delete('/internships/:id', authenticateToken, adminOnly, (req, res) => {
-  const existing = db.prepare('SELECT * FROM internships WHERE id = ?').get(req.params.id);
+router.delete('/internships/:id', authenticateToken, adminOnly, async (req, res) => {
+  const existing = await db.get('SELECT * FROM internships WHERE id = ?', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Internship not found' });
-  const affectedEnrollments = db.prepare('SELECT id FROM enrollments WHERE internshipId = ?')
-    .all(req.params.id).map((row) => row.id);
-  db.prepare('DELETE FROM internships WHERE id = ?').run(req.params.id);
+  const affectedEnrollments = (await db.all('SELECT id FROM enrollments WHERE internshipId = ?', req.params.id)).map((row) => row.id);
+  await db.run('DELETE FROM internships WHERE id = ?', req.params.id);
   if (affectedEnrollments.length > 0) registry.enqueueRemoveEnrollments(affectedEnrollments);
   res.json({ message: 'Internship deleted' });
 });
 
 // ===================== USERS MANAGEMENT =====================
-router.get('/users', authenticateToken, adminOnly, (req, res) => {
-  const users = db.prepare('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users ORDER BY createdAt DESC').all();
+router.get('/users', authenticateToken, adminOnly, async (req, res) => {
+  const users = await db.all('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users ORDER BY createdAt DESC');
   res.json({ users });
 });
 
 // Register a student on behalf of the admin, with a chosen registration date
-router.post('/users', authenticateToken, adminOnly, (req, res) => {
+router.post('/users', authenticateToken, adminOnly, async (req, res) => {
   try {
     const {
       firstName, lastName, email, phone, university, college, course, year,
@@ -259,27 +259,24 @@ router.post('/users', authenticateToken, adminOnly, (req, res) => {
       return res.status(400).json({ error: 'Registration date must be a valid date on or before today' });
     }
 
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(String(email).toLowerCase());
+    const existing = await db.get('SELECT id FROM users WHERE email = ?', String(email).toLowerCase());
     if (existing) {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
     const hashedPassword = bcrypt.hashSync(password, bcrypt.genSaltSync(12));
 
-    const result = db.prepare(`
+    const result = await db.run(`
       INSERT INTO users (firstName, lastName, email, phone, university, college, course, year,
                          gender, dob, rollNo, regNo, guardianName, guardianPhone, guardianRelation,
                          password, role, createdAt, createdByAdmin)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'student', ?, 1)
-    `).run(
-      firstName, lastName || '', String(email).toLowerCase(), phone, university, college, course, year,
+    `, firstName, lastName || '', String(email).toLowerCase(), phone, university, college, course, year,
       gender || '', dob || '', rollNo || '', regNo || '',
       guardianName || '', guardianPhone || '', guardianRelation || '',
-      hashedPassword, `${regDate} 12:00:00`
-    );
+      hashedPassword, `${regDate} 12:00:00`);
 
-    const user = db.prepare('SELECT id, firstName, lastName, email, role, createdAt FROM users WHERE id = ?')
-      .get(result.lastInsertRowid);
+    const user = await db.get('SELECT id, firstName, lastName, email, role, createdAt FROM users WHERE id = ?', result.lastInsertRowid);
     registry.enqueueStudent(user.id);
     res.status(201).json({ message: 'Registration created', user });
   } catch (err) {
@@ -288,75 +285,75 @@ router.post('/users', authenticateToken, adminOnly, (req, res) => {
   }
 });
 
-router.get('/users/:id', authenticateToken, adminOnly, (req, res) => {
-  const user = db.prepare('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE id = ?').get(req.params.id);
+router.get('/users/:id', authenticateToken, adminOnly, async (req, res) => {
+  const user = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE id = ?', req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  const enrollments = db.prepare(`
+  const enrollments = await db.all(`
     SELECT e.*, i.title as internshipTitle
     FROM enrollments e
     JOIN internships i ON e.internshipId = i.id
     WHERE e.userId = ?
-  `).all(req.params.id);
+  `, req.params.id);
 
-  const payments = db.prepare('SELECT * FROM payments WHERE userId = ? ORDER BY createdAt DESC').all(req.params.id);
-  const exams = db.prepare('SELECT * FROM exams WHERE userId = ? ORDER BY id DESC').all(req.params.id);
-  const certificates = db.prepare('SELECT * FROM certificates WHERE userId = ?').all(req.params.id);
+  const payments = await db.all('SELECT * FROM payments WHERE userId = ? ORDER BY createdAt DESC', req.params.id);
+  const exams = await db.all('SELECT * FROM exams WHERE userId = ? ORDER BY id DESC', req.params.id);
+  const certificates = await db.all('SELECT * FROM certificates WHERE userId = ?', req.params.id);
 
   res.json({ user, enrollments, payments, exams, certificates });
 });
 
-router.put('/users/:id/role', authenticateToken, adminOnly, (req, res) => {
+router.put('/users/:id/role', authenticateToken, adminOnly, async (req, res) => {
   const { role } = req.body;
   if (!['student', 'admin'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
-  db.prepare('UPDATE users SET role = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(role, req.params.id);
+  await db.run('UPDATE users SET role = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', role, req.params.id);
   registry.enqueueRoleChange(Number(req.params.id), role);
   res.json({ message: 'User role updated' });
 });
 
-router.delete('/users/:id', authenticateToken, adminOnly, (req, res) => {
-  const user = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.params.id);
+router.delete('/users/:id', authenticateToken, adminOnly, async (req, res) => {
+  const user = await db.get('SELECT id, role FROM users WHERE id = ?', req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.role === 'admin') return res.status(400).json({ error: 'Cannot delete admin users' });
 
-  db.prepare('DELETE FROM certificates WHERE userId = ?').run(req.params.id);
-  db.prepare('DELETE FROM exams WHERE userId = ?').run(req.params.id);
-  db.prepare('DELETE FROM payments WHERE userId = ?').run(req.params.id);
-  db.prepare('DELETE FROM enrollments WHERE userId = ?').run(req.params.id);
-  db.prepare('DELETE FROM sessions WHERE userId = ?').run(req.params.id);
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  await db.run('DELETE FROM certificates WHERE userId = ?', req.params.id);
+  await db.run('DELETE FROM exams WHERE userId = ?', req.params.id);
+  await db.run('DELETE FROM payments WHERE userId = ?', req.params.id);
+  await db.run('DELETE FROM enrollments WHERE userId = ?', req.params.id);
+  await db.run('DELETE FROM sessions WHERE userId = ?', req.params.id);
+  await db.run('DELETE FROM users WHERE id = ?', req.params.id);
   registry.enqueueRemoveStudent(Number(req.params.id));
 
   res.json({ message: 'User deleted successfully' });
 });
 
 // ===================== ENROLLMENTS MANAGEMENT =====================
-router.get('/enrollments', authenticateToken, adminOnly, (req, res) => {
-  const enrollments = db.prepare(`
+router.get('/enrollments', authenticateToken, adminOnly, async (req, res) => {
+  const enrollments = await db.all(`
     SELECT e.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
     ORDER BY e.enrolledAt DESC
-  `).all();
+  `);
   res.json({ enrollments });
 });
 
-router.put('/enrollments/:id/status', authenticateToken, adminOnly, (req, res) => {
+router.put('/enrollments/:id/status', authenticateToken, adminOnly, async (req, res) => {
   const { status } = req.body;
   if (!['pending', 'active', 'completed', 'expired'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
   }
-  db.prepare('UPDATE enrollments SET status = ? WHERE id = ?').run(status, req.params.id);
+  await db.run('UPDATE enrollments SET status = ? WHERE id = ?', status, req.params.id);
   registry.enqueueEnrollment(Number(req.params.id));
   res.json({ message: 'Enrollment status updated' });
 });
 
-router.put('/enrollments/:id/progress', authenticateToken, adminOnly, (req, res) => {
+router.put('/enrollments/:id/progress', authenticateToken, adminOnly, async (req, res) => {
   const { progress } = req.body;
-  db.prepare('UPDATE enrollments SET progress = ? WHERE id = ?').run(progress, req.params.id);
+  await db.run('UPDATE enrollments SET progress = ? WHERE id = ?', progress, req.params.id);
   registry.enqueueEnrollment(Number(req.params.id));
   res.json({ message: 'Progress updated' });
 });
@@ -366,12 +363,12 @@ const { getAllSettings, setSettings } = require('../lib/settings');
 
 const SETTING_KEYS = ['attendanceDateMode', 'companyName', 'companyAddress', 'companyCin', 'directorName', 'siteUrl'];
 
-router.get('/settings', authenticateToken, adminOnly, (req, res) => {
-  res.json({ settings: getAllSettings(db) });
+router.get('/settings', authenticateToken, adminOnly, async (req, res) => {
+  res.json({ settings: await getAllSettings(db) });
 });
 
 // Partial update: only keys present in the body are written
-router.put('/settings', authenticateToken, adminOnly, (req, res) => {
+router.put('/settings', authenticateToken, adminOnly, async (req, res) => {
   const updates = {};
   for (const key of SETTING_KEYS) {
     if (req.body[key] === undefined) continue;
@@ -392,38 +389,38 @@ router.put('/settings', authenticateToken, adminOnly, (req, res) => {
   if (updates.siteUrl !== undefined && updates.siteUrl && !/^https?:\/\/\S+$/.test(updates.siteUrl)) {
     return res.status(400).json({ error: 'Verification link must start with http:// or https://' });
   }
-  setSettings(db, updates);
-  res.json({ message: 'Settings updated', settings: getAllSettings(db) });
+  await setSettings(db, updates);
+  await refreshBrand();
+  res.json({ message: 'Settings updated', settings: await getAllSettings(db) });
 });
 
 // ===================== PAYMENTS MANAGEMENT =====================
-router.get('/payments', authenticateToken, adminOnly, (req, res) => {
-  const payments = db.prepare(`
+router.get('/payments', authenticateToken, adminOnly, async (req, res) => {
+  const payments = await db.all(`
     SELECT p.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
     FROM payments p
     JOIN users u ON p.userId = u.id
     JOIN internships i ON i.id = p.internshipId
     ORDER BY p.createdAt DESC
-  `).all();
+  `);
   res.json({ payments });
 });
 
-router.put('/payments/:id/status', authenticateToken, adminOnly, (req, res) => {
+router.put('/payments/:id/status', authenticateToken, adminOnly, async (req, res) => {
   const { status, transactionId } = req.body;
   if (!['pending', 'completed', 'failed', 'refunded'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
   }
 
-  const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.id);
+  const payment = await db.get('SELECT * FROM payments WHERE id = ?', req.params.id);
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
   if (status === 'completed' && payment.status !== 'completed') {
     // Same provisioning path as Razorpay verification: completes the payment,
     // creates/activates the enrollment and opens the exam — one transaction
-    completePayment(payment, { transactionId: transactionId || null });
+    await completePayment(payment, { transactionId: transactionId || null });
   } else {
-    db.prepare('UPDATE payments SET status = ?, transactionId = COALESCE(?, transactionId), paidAt = CASE WHEN ? = "completed" THEN CURRENT_TIMESTAMP ELSE paidAt END WHERE id = ?')
-      .run(status, transactionId, status, req.params.id);
+    await db.run('UPDATE payments SET status = ?, transactionId = COALESCE(?, transactionId), paidAt = CASE WHEN ? = "completed" THEN CURRENT_TIMESTAMP ELSE paidAt END WHERE id = ?', status, transactionId, status, req.params.id);
     registry.enqueuePayment(Number(req.params.id));
     if (payment.enrollmentId) registry.enqueueEnrollment(payment.enrollmentId);
   }
@@ -431,36 +428,36 @@ router.put('/payments/:id/status', authenticateToken, adminOnly, (req, res) => {
 });
 
 // ===================== EXAMS MANAGEMENT =====================
-router.get('/exams', authenticateToken, adminOnly, (req, res) => {
-  const exams = db.prepare(`
+router.get('/exams', authenticateToken, adminOnly, async (req, res) => {
+  const exams = await db.all(`
     SELECT e.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
     FROM exams e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
     ORDER BY e.id DESC
-  `).all();
+  `);
   res.json({ exams });
 });
 
-router.put('/exams/:id/schedule', authenticateToken, adminOnly, (req, res) => {
+router.put('/exams/:id/schedule', authenticateToken, adminOnly, async (req, res) => {
   const { scheduledAt } = req.body;
-  db.prepare('UPDATE exams SET scheduledAt = ? WHERE id = ?').run(scheduledAt, req.params.id);
+  await db.run('UPDATE exams SET scheduledAt = ? WHERE id = ?', scheduledAt, req.params.id);
   res.json({ message: 'Exam scheduled' });
 });
 
-const loadExamForAdmin = (id) => db.prepare(`
+const loadExamForAdmin = async (id) => await db.get(`
   SELECT e.*, u.firstName, u.lastName, u.email, i.title as internshipTitle, i.category
   FROM exams e
   JOIN users u ON e.userId = u.id
   JOIN internships i ON e.internshipId = i.id
   WHERE e.id = ?
-`).get(id);
+`, id);
 
 const gradeFor = (score) => score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 60 ? 'B' : score >= 50 ? 'C' : 'D';
 
 // Keeps certificate + enrollment consistent with an exam result
-const applyResult = (exam, score, status) => {
-  const existingCert = db.prepare('SELECT id FROM certificates WHERE enrollmentId = ?').get(exam.enrollmentId);
+const applyResult = async (exam, score, status) => {
+  const existingCert = await db.get('SELECT id FROM certificates WHERE enrollmentId = ?', exam.enrollmentId);
 
   if (status === 'completed') {
     if (!existingCert) {
@@ -468,44 +465,41 @@ const applyResult = (exam, score, status) => {
       let isUnique = false;
       while (!isUnique) {
         certId = `IQI-${new Date().getFullYear()}-${crypto.randomBytes(4).readUInt32BE(0) % 1000000}`;
-        const existing = db.prepare('SELECT id FROM certificates WHERE certificateId = ?').get(certId);
+        const existing = await db.get('SELECT id FROM certificates WHERE certificateId = ?', certId);
         if (!existing) isUnique = true;
       }
-      db.prepare('INSERT INTO certificates (userId, enrollmentId, examId, certificateId, grade, score) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(exam.userId, exam.enrollmentId, exam.id, certId, gradeFor(score), score);
+      await db.run('INSERT INTO certificates (userId, enrollmentId, examId, certificateId, grade, score) VALUES (?, ?, ?, ?, ?, ?)', exam.userId, exam.enrollmentId, exam.id, certId, gradeFor(score), score);
     } else {
       // Keep marks on an existing certificate in sync with the edited result
-      db.prepare('UPDATE certificates SET score = ?, grade = ? WHERE enrollmentId = ?')
-        .run(score, gradeFor(score), exam.enrollmentId);
+      await db.run('UPDATE certificates SET score = ?, grade = ? WHERE enrollmentId = ?', score, gradeFor(score), exam.enrollmentId);
     }
-    db.prepare("UPDATE enrollments SET status = 'completed' WHERE id = ?").run(exam.enrollmentId);
+    await db.run("UPDATE enrollments SET status = 'completed' WHERE id = ?", exam.enrollmentId);
   } else if (existingCert) {
-    db.prepare('DELETE FROM certificates WHERE enrollmentId = ?').run(exam.enrollmentId);
-    db.prepare("UPDATE enrollments SET status = 'active' WHERE id = ? AND status = 'completed'").run(exam.enrollmentId);
+    await db.run('DELETE FROM certificates WHERE enrollmentId = ?', exam.enrollmentId);
+    await db.run("UPDATE enrollments SET status = 'active' WHERE id = ? AND status = 'completed'", exam.enrollmentId);
   }
   registry.enqueueEnrollment(exam.enrollmentId);
 };
 
-router.put('/exams/:id/result', authenticateToken, adminOnly, (req, res) => {
+router.put('/exams/:id/result', authenticateToken, adminOnly, async (req, res) => {
   const { score, status } = req.body;
   if (!['completed', 'failed'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
   }
 
-  const exam = loadExamForAdmin(req.params.id);
+  const exam = await loadExamForAdmin(req.params.id);
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
 
-  db.prepare('UPDATE exams SET score = ?, status = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?')
-    .run(score, status, exam.id);
+  await db.run('UPDATE exams SET score = ?, status = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?', score, status, exam.id);
 
-  applyResult(exam, score, status);
+  await applyResult(exam, score, status);
 
   res.json({ message: 'Exam result updated' });
 });
 
 // ===================== EXAM ATTEMPT REVIEW / EDIT =====================
-router.get('/exams/:id/attempt', authenticateToken, adminOnly, (req, res) => {
-  const exam = loadExamForAdmin(req.params.id);
+router.get('/exams/:id/attempt', authenticateToken, adminOnly, async (req, res) => {
+  const exam = await loadExamForAdmin(req.params.id);
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
 
   let saved = [];
@@ -513,10 +507,10 @@ router.get('/exams/:id/attempt', authenticateToken, adminOnly, (req, res) => {
   const savedMap = {};
   saved.forEach((a) => { if (a && a.questionId != null) savedMap[a.questionId] = a.selectedOption; });
 
-  const trackQuestions = db.prepare(`
+  const trackQuestions = await db.all(`
     SELECT id, question, optionA, optionB, optionC, optionD, correct
     FROM questions WHERE track = ? AND isActive = 1
-  `).all(exam.category);
+  `, exam.category);
 
   const attemptedIds = new Set(Object.keys(savedMap).map(Number));
   const questions = trackQuestions
@@ -537,14 +531,14 @@ router.get('/exams/:id/attempt', authenticateToken, adminOnly, (req, res) => {
   });
 });
 
-router.put('/exams/:id/attempt', authenticateToken, adminOnly, (req, res) => {
-  const exam = loadExamForAdmin(req.params.id);
+router.put('/exams/:id/attempt', authenticateToken, adminOnly, async (req, res) => {
+  const exam = await loadExamForAdmin(req.params.id);
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
 
   const { answers } = req.body;
   if (!Array.isArray(answers)) return res.status(400).json({ error: 'answers must be an array' });
 
-  const trackQuestions = db.prepare('SELECT id, correct FROM questions WHERE track = ? AND isActive = 1').all(exam.category);
+  const trackQuestions = await db.all('SELECT id, correct FROM questions WHERE track = ? AND isActive = 1', exam.category);
   const correctMap = {};
   trackQuestions.forEach((q) => { correctMap[q.id] = q.correct; });
 
@@ -563,14 +557,13 @@ router.put('/exams/:id/attempt', authenticateToken, adminOnly, (req, res) => {
   const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
   const status = percentage >= (exam.passingMarks ?? 40) ? 'completed' : 'failed';
 
-  db.prepare('UPDATE exams SET answers = ?, score = ?, status = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?')
-    .run(JSON.stringify(clean), percentage, status, exam.id);
+  await db.run('UPDATE exams SET answers = ?, score = ?, status = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?', JSON.stringify(clean), percentage, status, exam.id);
 
-  applyResult(exam, percentage, status);
+  await applyResult(exam, percentage, status);
 
   res.json({
     message: 'Exam result updated',
-    exam: db.prepare('SELECT * FROM exams WHERE id = ?').get(exam.id),
+    exam: await db.get('SELECT * FROM exams WHERE id = ?', exam.id),
     score: percentage,
     correct: score,
     total,
@@ -579,134 +572,132 @@ router.put('/exams/:id/attempt', authenticateToken, adminOnly, (req, res) => {
 });
 
 // ===================== CERTIFICATES =====================
-router.get('/certificates', authenticateToken, adminOnly, (req, res) => {
-  const certificates = db.prepare(`
+router.get('/certificates', authenticateToken, adminOnly, async (req, res) => {
+  const certificates = await db.all(`
     SELECT c.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
     FROM certificates c
     JOIN users u ON c.userId = u.id
     JOIN enrollments e ON c.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
     ORDER BY c.issuedAt DESC
-  `).all();
+  `);
   res.json({ certificates });
 });
 
 // ===================== EDIT STUDENT MARKS =====================
-router.put('/certificates/:id/marks', authenticateToken, adminOnly, (req, res) => {
+router.put('/certificates/:id/marks', authenticateToken, adminOnly, async (req, res) => {
   const score = Number(req.body.score);
   if (!Number.isFinite(score) || score < 0 || score > 100) {
     return res.status(400).json({ error: 'Score must be between 0 and 100' });
   }
 
-  const cert = db.prepare('SELECT * FROM certificates WHERE id = ?').get(req.params.id);
+  const cert = await db.get('SELECT * FROM certificates WHERE id = ?', req.params.id);
   if (!cert) return res.status(404).json({ error: 'Certificate not found' });
 
   const rounded = Math.round(score);
-  const exam = cert.examId ? db.prepare('SELECT * FROM exams WHERE id = ?').get(cert.examId) : null;
+  const exam = cert.examId ? await db.get('SELECT * FROM exams WHERE id = ?', cert.examId) : null;
   const passingMarks = exam?.passingMarks ?? 40;
   const status = rounded >= passingMarks ? 'completed' : 'failed';
 
   if (exam) {
-    db.prepare('UPDATE exams SET score = ?, status = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(rounded, status, exam.id);
+    await db.run('UPDATE exams SET score = ?, status = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?', rounded, status, exam.id);
   }
 
   if (status === 'completed') {
-    db.prepare('UPDATE certificates SET score = ?, grade = ? WHERE id = ?').run(rounded, gradeFor(rounded), cert.id);
-    db.prepare("UPDATE enrollments SET status = 'completed' WHERE id = ?").run(cert.enrollmentId);
+    await db.run('UPDATE certificates SET score = ?, grade = ? WHERE id = ?', rounded, gradeFor(rounded), cert.id);
+    await db.run("UPDATE enrollments SET status = 'completed' WHERE id = ?", cert.enrollmentId);
     registry.enqueueEnrollment(cert.enrollmentId);
-    const updated = db.prepare('SELECT * FROM certificates WHERE id = ?').get(cert.id);
+    const updated = await db.get('SELECT * FROM certificates WHERE id = ?', cert.id);
     return res.json({ message: `Marks updated to ${rounded}% (${updated.grade})`, certificate: updated });
   }
 
   // Failing score — revoke certificate, same rule as a failed exam submission
-  db.prepare('DELETE FROM certificates WHERE id = ?').run(cert.id);
-  db.prepare("UPDATE enrollments SET status = 'active' WHERE id = ? AND status = 'completed'").run(cert.enrollmentId);
+  await db.run('DELETE FROM certificates WHERE id = ?', cert.id);
+  await db.run("UPDATE enrollments SET status = 'active' WHERE id = ? AND status = 'completed'", cert.enrollmentId);
   registry.enqueueEnrollment(cert.enrollmentId);
   res.json({ message: `Marks updated to ${rounded}% — below passing (${passingMarks}%), certificate revoked`, revoked: true });
 });
 
 // ===================== QUESTIONS MANAGEMENT =====================
 // A track is valid if some internship uses that category
-const isValidTrack = (track) =>
-  !!db.prepare('SELECT 1 AS ok FROM internships WHERE category = ?').get(track);
+const isValidTrack = async (track) =>
+  !!await db.get('SELECT 1 AS ok FROM internships WHERE category = ?', track);
 
-router.get('/questions', authenticateToken, adminOnly, (req, res) => {
+router.get('/questions', authenticateToken, adminOnly, async (req, res) => {
   const { track } = req.query;
   let questions;
   if (track) {
-    questions = db.prepare('SELECT * FROM questions WHERE track = ? ORDER BY id ASC').all(track);
+    questions = await db.all('SELECT * FROM questions WHERE track = ? ORDER BY id ASC', track);
   } else {
-    questions = db.prepare('SELECT * FROM questions ORDER BY track, id ASC').all();
+    questions = await db.all('SELECT * FROM questions ORDER BY track, id ASC');
   }
   res.json({ questions });
 });
 
-router.get('/questions/stats', authenticateToken, adminOnly, (req, res) => {
-  const stats = db.prepare('SELECT track, COUNT(*) as count, SUM(CASE WHEN isActive = 1 THEN 1 ELSE 0 END) as activeCount FROM questions GROUP BY track').all();
+router.get('/questions/stats', authenticateToken, adminOnly, async (req, res) => {
+  const stats = await db.all('SELECT track, COUNT(*) as count, SUM(CASE WHEN isActive = 1 THEN 1 ELSE 0 END) as activeCount FROM questions GROUP BY track');
   res.json({ stats });
 });
 
-router.get('/questions/:id', authenticateToken, adminOnly, (req, res) => {
-  const question = db.prepare('SELECT * FROM questions WHERE id = ?').get(req.params.id);
+router.get('/questions/:id', authenticateToken, adminOnly, async (req, res) => {
+  const question = await db.get('SELECT * FROM questions WHERE id = ?', req.params.id);
   if (!question) return res.status(404).json({ error: 'Question not found' });
   res.json({ question });
 });
 
-router.post('/questions', authenticateToken, adminOnly, (req, res) => {
+router.post('/questions', authenticateToken, adminOnly, async (req, res) => {
   const { track, question, optionA, optionB, optionC, optionD, correct } = req.body;
   if (!track || !question || !optionA || !optionB || !optionC || !optionD || correct === undefined) {
     return res.status(400).json({ error: 'All fields are required' });
   }
-  if (!isValidTrack(track)) {
+  if (!(await isValidTrack(track))) {
     return res.status(400).json({ error: 'Invalid track' });
   }
   if (![0, 1, 2, 3].includes(correct)) {
     return res.status(400).json({ error: 'Correct answer must be 0-3 (A-D)' });
   }
 
-  const result = db.prepare('INSERT INTO questions (track, question, optionA, optionB, optionC, optionD, correct) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(track, question, optionA, optionB, optionC, optionD, correct);
+  const result = await db.run('INSERT INTO questions (track, question, optionA, optionB, optionC, optionD, correct) VALUES (?, ?, ?, ?, ?, ?, ?)', track, question, optionA, optionB, optionC, optionD, correct);
 
-  const newQ = db.prepare('SELECT * FROM questions WHERE id = ?').get(result.lastInsertRowid);
+  const newQ = await db.get('SELECT * FROM questions WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ message: 'Question added', question: newQ });
 });
 
-router.post('/questions/bulk', authenticateToken, adminOnly, (req, res) => {
+router.post('/questions/bulk', authenticateToken, adminOnly, async (req, res) => {
   const { track, questions: newQuestions } = req.body;
   if (!track || !Array.isArray(newQuestions) || newQuestions.length === 0) {
     return res.status(400).json({ error: 'Track and questions array are required' });
   }
-  if (!isValidTrack(track)) {
+  if (!(await isValidTrack(track))) {
     return res.status(400).json({ error: 'Invalid track' });
   }
 
-  const insert = db.prepare('INSERT INTO questions (track, question, optionA, optionB, optionC, optionD, correct) VALUES (?, ?, ?, ?, ?, ?, ?)');
-  const insertMany = db.transaction((items) => {
+  const insert = ('INSERT INTO questions (track, question, optionA, optionB, optionC, optionD, correct) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const insertMany = db.transaction(async (items) => {
     let added = 0;
     for (const q of items) {
       if (q.question && q.optionA && q.optionB && q.optionC && q.optionD && [0, 1, 2, 3].includes(q.correct)) {
-        insert.run(track, q.question, q.optionA, q.optionB, q.optionC, q.optionD, q.correct);
+        await db.run(insert, track, q.question, q.optionA, q.optionB, q.optionC, q.optionD, q.correct);
         added++;
       }
     }
     return added;
   });
 
-  const added = insertMany(newQuestions);
+  const added = await insertMany(newQuestions);
   res.status(201).json({ message: `${added} questions added`, count: added });
 });
 
-router.put('/questions/:id', authenticateToken, adminOnly, (req, res) => {
+router.put('/questions/:id', authenticateToken, adminOnly, async (req, res) => {
   const { question, optionA, optionB, optionC, optionD, correct, isActive } = req.body;
-  const existing = db.prepare('SELECT * FROM questions WHERE id = ?').get(req.params.id);
+  const existing = await db.get('SELECT * FROM questions WHERE id = ?', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Question not found' });
 
   if (correct !== undefined && ![0, 1, 2, 3].includes(correct)) {
     return res.status(400).json({ error: 'Correct answer must be 0-3 (A-D)' });
   }
 
-  db.prepare(`UPDATE questions SET
+  await db.run(`UPDATE questions SET
     question = COALESCE(?, question),
     optionA = COALESCE(?, optionA),
     optionB = COALESCE(?, optionB),
@@ -715,43 +706,43 @@ router.put('/questions/:id', authenticateToken, adminOnly, (req, res) => {
     correct = COALESCE(?, correct),
     isActive = COALESCE(?, isActive)
     WHERE id = ?
-  `).run(question, optionA, optionB, optionC, optionD, correct, isActive, req.params.id);
+  `, question, optionA, optionB, optionC, optionD, correct, isActive, req.params.id);
 
-  const updated = db.prepare('SELECT * FROM questions WHERE id = ?').get(req.params.id);
+  const updated = await db.get('SELECT * FROM questions WHERE id = ?', req.params.id);
   res.json({ message: 'Question updated', question: updated });
 });
 
-router.delete('/questions/:id', authenticateToken, adminOnly, (req, res) => {
-  const existing = db.prepare('SELECT * FROM questions WHERE id = ?').get(req.params.id);
+router.delete('/questions/:id', authenticateToken, adminOnly, async (req, res) => {
+  const existing = await db.get('SELECT * FROM questions WHERE id = ?', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Question not found' });
-  db.prepare('DELETE FROM questions WHERE id = ?').run(req.params.id);
+  await db.run('DELETE FROM questions WHERE id = ?', req.params.id);
   res.json({ message: 'Question deleted' });
 });
 
-router.delete('/questions/track/:track', authenticateToken, adminOnly, (req, res) => {
-  if (!isValidTrack(req.params.track)) {
+router.delete('/questions/track/:track', authenticateToken, adminOnly, async (req, res) => {
+  if (!(await isValidTrack(req.params.track))) {
     return res.status(400).json({ error: 'Invalid track' });
   }
-  const result = db.prepare('DELETE FROM questions WHERE track = ?').run(req.params.track);
+  const result = await db.run('DELETE FROM questions WHERE track = ?', req.params.track);
   res.json({ message: `${result.changes} questions deleted from ${req.params.track}` });
 });
 
 // ===================== CONTACT MESSAGES (ISSUES) =====================
-router.get('/contact-messages', authenticateToken, adminOnly, (req, res) => {
-  const messages = db.prepare('SELECT * FROM contact_messages ORDER BY createdAt DESC, id DESC').all();
-  const unread = db.prepare("SELECT COUNT(*) AS count FROM contact_messages WHERE status = 'new'").get().count;
+router.get('/contact-messages', authenticateToken, adminOnly, async (req, res) => {
+  const messages = await db.all('SELECT * FROM contact_messages ORDER BY createdAt DESC, id DESC');
+  const unread = (await db.get("SELECT COUNT(*) AS count FROM contact_messages WHERE status = 'new'")).count;
   res.json({ messages, unread });
 });
 
-router.put('/contact-messages/:id/status', authenticateToken, adminOnly, (req, res) => {
+router.put('/contact-messages/:id/status', authenticateToken, adminOnly, async (req, res) => {
   const status = req.body.status === 'read' ? 'read' : 'new';
-  const result = db.prepare('UPDATE contact_messages SET status = ? WHERE id = ?').run(status, req.params.id);
+  const result = await db.run('UPDATE contact_messages SET status = ? WHERE id = ?', status, req.params.id);
   if (!result.changes) return res.status(404).json({ error: 'Message not found' });
   res.json({ message: 'Status updated' });
 });
 
-router.delete('/contact-messages/:id', authenticateToken, adminOnly, (req, res) => {
-  const result = db.prepare('DELETE FROM contact_messages WHERE id = ?').run(req.params.id);
+router.delete('/contact-messages/:id', authenticateToken, adminOnly, async (req, res) => {
+  const result = await db.run('DELETE FROM contact_messages WHERE id = ?', req.params.id);
   if (!result.changes) return res.status(404).json({ error: 'Message not found' });
   res.json({ message: 'Message deleted' });
 });

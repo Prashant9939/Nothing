@@ -7,11 +7,9 @@ const USER_COLUMNS = `
   role, createdAt
 `;
 
-const loadUser = (id) => {
-  return db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(id);
-};
+const loadUser = async (id) => db.get(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`, id);
 
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -21,7 +19,7 @@ const authenticateToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = loadUser(decoded.id);
+    const user = await loadUser(decoded.id);
 
     if (!user) {
       return res.status(401).json({ error: 'User not found. Please login again.' });
@@ -38,7 +36,7 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-const optionalAuth = (req, res, next) => {
+const optionalAuth = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -48,7 +46,7 @@ const optionalAuth = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = loadUser(decoded.id);
+    const user = await loadUser(decoded.id);
     if (user) {
       req.user = user;
       req.token = token;

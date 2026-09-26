@@ -8,7 +8,7 @@ const router = express.Router();
 // Razorpay webhook — the backup path that completes a payment even if the
 // browser closes right after checkout. Signature is computed over the RAW
 // request body, so this route must be mounted before express.json().
-router.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const secret = (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
   if (!secret) {
     return res.status(501).json({
@@ -35,9 +35,9 @@ router.post('/webhook', express.raw({ type: 'application/json' }), (req, res) =>
     const transactionId = paymentEntity?.id || null;
 
     if (orderId) {
-      const payment = db.prepare('SELECT * FROM payments WHERE razorpayOrderId = ?').get(orderId);
+      const payment = await db.get('SELECT * FROM payments WHERE razorpayOrderId = ?', orderId);
       if (payment && payment.status !== 'completed') {
-        completePayment(payment, { transactionId, razorpayOrderId: orderId, razorpayPaymentId: transactionId });
+        await completePayment(payment, { transactionId, razorpayOrderId: orderId, razorpayPaymentId: transactionId });
         console.log(`Webhook: payment ${payment.id} completed via Razorpay (${orderId})`);
       }
     }

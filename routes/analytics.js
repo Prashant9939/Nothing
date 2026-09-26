@@ -8,7 +8,7 @@ const VISITOR_ID = /^[A-Za-z0-9_-]{8,64}$/;
 
 // Public beacon — receives visit / pageview / click events from the SPA.
 // Mounted with its own rate limiter so click traffic never eats the global budget.
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { visitorId, type, path } = req.body || {};
 
   if (typeof visitorId !== 'string' || !VISITOR_ID.test(visitorId)) {
@@ -28,8 +28,7 @@ router.post('/', (req, res) => {
   }
 
   try {
-    db.prepare('INSERT INTO analytics_events (visitorId, type, path) VALUES (?, ?, ?)')
-      .run(visitorId, type, pagePath);
+    await db.run('INSERT INTO analytics_events (visitorId, type, path) VALUES (?, ?, ?)', visitorId, type, pagePath);
     res.json({ ok: true });
   } catch (err) {
     console.error('analytics track failed:', err.message);

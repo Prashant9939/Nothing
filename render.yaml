@@ -21,8 +21,11 @@ services:
       # Environment tab of your Render service after the first deploy.
       - key: ADMIN_PASSWORD
         generateValue: true
-      - key: DB_PATH
-        value: ./database.sqlite
-      # No Supabase keys on Render — keep the mirror off
+      # Supabase Postgres connection string (Dashboard -> Connect ->
+      # Connection string -> URI). Set it in the Render dashboard:
+      # Environment -> add DATABASE_URL -> paste the URI -> Save.
+      - key: DATABASE_URL
+        sync: false
+      # No Supabase keys on Render — legacy mirror stays off
       - key: SUPABASE_SYNC
         value: "false"
