@@ -21,9 +21,14 @@ services:
       # Environment tab of your Render service after the first deploy.
       - key: ADMIN_PASSWORD
         generateValue: true
-      # Supabase Postgres connection string (Dashboard -> Connect ->
-      # Connection string -> URI). Set it in the Render dashboard:
-      # Environment -> add DATABASE_URL -> paste the URI -> Save.
+      # Supabase Postgres connection string. IMPORTANT: paste the SESSION
+      # pooler URI (Dashboard -> Connect -> Connection string -> URI ->
+      # Session pooler), e.g. postgresql://postgres.<ref>:<pass>@aws-0-<region>
+      # .pooler.supabase.com:5432/postgres?sslmode=require
+      # Do NOT use the direct `db.<ref>.supabase.co` host: it is IPv6-only
+      # and Render has no IPv6 route -> "Database initialization failed ...
+      # network unreachable".
+      # Set it in the Render dashboard: Environment -> DATABASE_URL -> Save.
       - key: DATABASE_URL
         sync: false
       # No Supabase keys on Render — legacy mirror stays off

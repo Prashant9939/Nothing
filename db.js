@@ -16,15 +16,35 @@ const bcrypt = require('bcryptjs');
 types.setTypeParser(20, (v) => parseInt(v, 10));
 types.setTypeParser(1700, (v) => parseFloat(v));
 
-const connectionString = (process.env.DATABASE_URL || '').trim();
-if (!connectionString) {
+const rawConnectionString = (process.env.DATABASE_URL || '').trim();
+if (!rawConnectionString) {
   console.error('FATAL: DATABASE_URL is not set in environment variables.');
   process.exit(1);
 }
 
+// pg parses `connectionString` AFTER the explicit config and lets its
+// ?sslmode= value override the `ssl` option below (in pg 8+, sslmode=require
+// behaves as verify-full) — that fails against Supabase's CA chain. Capture
+// the SSL intent first, strip the param, and negotiate TLS ourselves so the
+// app works with any URI pasted from the Supabase dashboard or Render.
+function normalizeDbUrl(uri) {
+  let wantsSsl = /sslmode=(require|verify-ca|verify-full)/.test(uri) || /supabase|amazonaws|pooler/i.test(uri);
+  try {
+    const u = new URL(uri);
+    const mode = u.searchParams.get('sslmode');
+    if (mode !== null) wantsSsl = mode !== 'disable';
+    u.searchParams.delete('sslmode');
+    return { uri: u.toString(), wantsSsl };
+  } catch {
+    return { uri: uri.replace(/([?&])sslmode=[^&]*&?/g, '$1').replace(/[?&]$/, ''), wantsSsl };
+  }
+}
+
+const { uri: connectionString, wantsSsl } = normalizeDbUrl(rawConnectionString);
+
 const pool = new Pool({
   connectionString,
-  ssl: /sslmode=require|supabase|amazonaws/.test(connectionString) ? { rejectUnauthorized: false } : undefined,
+  ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
   max: 10,
   idleTimeoutMillis: 30000,
 });
