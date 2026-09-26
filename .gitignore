@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Secrets / environment (never commit)
+.env
+
+# Local database + backups + WAL files
+database.sqlite*
+*.sqlite-wal
+*.sqlite-shm
+
+# Build output
+client/dist/
+
+# Logs
+*.log
+logs/
+
+# Python artifacts (test scripts)
+__pycache__/
+*.pyc
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
