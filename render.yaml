@@ -1,0 +1,28 @@
+# Render Blueprint: deploys the whole app (Express API + built React client)
+# as a single free web service.
+# Dashboard -> New -> Blueprint -> select this repo -> Apply.
+services:
+  - type: web
+    name: iqintern
+    runtime: node
+    plan: free
+    buildCommand: npm install && cd client && npm install && npm run build
+    startCommand: node server.js
+    healthCheckPath: /api/auth/internships
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Required: server refuses to start without it (server.js:3)
+      - key: JWT_SECRET
+        generateValue: true
+      # Admin login password, generated once — read it from the
+      # Environment tab of your Render service after the first deploy.
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: DB_PATH
+        value: ./database.sqlite
+      # No Supabase keys on Render — keep the mirror off
+      - key: SUPABASE_SYNC
+        value: "false"
