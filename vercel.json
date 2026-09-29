@@ -6,7 +6,7 @@
     "api/index.js": {
       "maxDuration": 60,
       "regions": ["sin1"],
-      "includeFiles": "client/public/logo/**"
+      "includeFiles": "{node_modules/pdfkit/js/standard-fonts/**,node_modules/pdfkit/js/data/**,client/public/logo/**,client/src/assets/Legeal/**}"
     }
   },
   "rewrites": [
