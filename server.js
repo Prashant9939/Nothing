@@ -94,10 +94,34 @@ app.use((req, res, next) => {
 });
 // The database (schema + seeds) and brand settings must be ready before any
 // request is served. On Vercel the function starts handling requests as soon
-// as it is required, so hold them here; locally `ready` resolves before
-// app.listen anyway.
-const ready = db.ready.then(() => refreshBrand());
-app.use((req, res, next) => ready.then(() => next()).catch(next));
+// as it is required. The gate is retriable: a transient DB failure (e.g. a
+// dropped TLS handshake to the pooler during a cold start) must not poison
+// this instance for its whole lifetime — after a failure the next request
+// starts a fresh attempt, and up to 3 tries (with backoff) are made per
+// request before the real error is surfaced.
+let appReady = null;
+const ensureReady = () => {
+  if (!appReady) {
+    appReady = (async () => {
+      let lastErr;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await db.init();
+          await refreshBrand();
+          return;
+        } catch (err) {
+          lastErr = err;
+          console.error(`Startup init attempt ${attempt}/3 failed: ${err.message}`);
+          if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1000));
+        }
+      }
+      throw lastErr;
+    })();
+    appReady.then(() => {}, () => { appReady = null; });
+  }
+  return appReady;
+};
+app.use((req, res, next) => ensureReady().then(() => next()).catch(next));
 
 // Razorpay webhook must run before express.json() — its signature is computed
 // over the raw request body.
@@ -143,11 +167,11 @@ app.use((err, req, res, next) => {
 
 // Locally: start listening only once the database and brand are ready.
 // On Vercel (see api/index.js) the app is exported instead, no port is
-// opened, and each incoming request waits on `ready` above.
+// opened, and each incoming request waits on the gate above.
 if (process.env.VERCEL) {
-  ready.catch((err) => console.error('Database initialization failed:', err));
+  ensureReady().catch((err) => console.error('Database initialization failed:', err));
 } else {
-  ready
+  ensureReady()
     .then(() => {
       app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);

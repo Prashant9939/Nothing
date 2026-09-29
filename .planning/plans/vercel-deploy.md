@@ -29,17 +29,35 @@ module.exports = app;
 ```
 
 ### 2. `server.js` (two edits, local behavior unchanged)
-a) Gate every request on DB readiness so the first request after a cold start never races schema/seeds, and `refreshBrand()` runs before first use. Place after the security-headers middleware (before the `/api/razorpay` mount):
+a) Gate every request on DB readiness so the first request after a cold start never races schema/seeds, and `refreshBrand()` runs before first use. The gate is **retriable**: on Vercel a transient DB failure during cold-start init (e.g. a dropped TLS handshake to the pooler) must not poison the instance for its whole lifetime, so failures clear the cached promise and the next request retries (3 attempts with backoff per request). `db.js` exposes a re-runnable `db.init()` for this; its init body is idempotent. Place after the security-headers middleware (before the `/api/razorpay` mount):
 ```js
-const ready = db.ready.then(() => refreshBrand());
-app.use((req, res, next) => ready.then(() => next()).catch(next));
+let appReady = null;
+const ensureReady = () => {
+  if (!appReady) {
+    appReady = (async () => {
+      let lastErr;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try { await db.init(); await refreshBrand(); return; }
+        catch (err) {
+          lastErr = err;
+          console.error(`Startup init attempt ${attempt}/3 failed: ${err.message}`);
+          if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1000));
+        }
+      }
+      throw lastErr;
+    })();
+    appReady.then(() => {}, () => { appReady = null; });
+  }
+  return appReady;
+};
+app.use((req, res, next) => ensureReady().then(() => next()).catch(next));
 ```
 b) Only listen on a port outside Vercel (replace the current `db.ready.then(...listen...)` block):
 ```js
 if (process.env.VERCEL) {
-  ready.catch((err) => console.error('Database initialization failed:', err));
+  ensureReady().catch((err) => console.error('Database initialization failed:', err));
 } else {
-  ready
+  ensureReady()
     .then(() => { app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`)); })
     .catch((err) => { console.error('Database initialization failed:', err); process.exit(1); });
 }
