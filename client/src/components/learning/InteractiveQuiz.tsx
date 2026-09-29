@@ -82,7 +82,7 @@ export default function InteractiveQuiz({ questions, onComplete }: InteractiveQu
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-medium text-slate-500">
           Question {currentIndex + 1} of {questions.length}
         </span>
@@ -98,7 +98,7 @@ export default function InteractiveQuiz({ questions, onComplete }: InteractiveQu
         />
       </div>
 
-      <h4 className="text-base font-semibold text-slate-900 mb-4">{currentQuestion.question}</h4>
+      <h4 className="mb-4 break-words text-base font-semibold text-slate-900">{currentQuestion.question}</h4>
 
       <div className="space-y-3 mb-6">
         {currentQuestion.options.map((option, index) => (
@@ -118,7 +118,7 @@ export default function InteractiveQuiz({ questions, onComplete }: InteractiveQu
                   : 'border-slate-200 hover:border-slate-300 text-slate-700'
             }`}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <div className={`w-6 h-6 rounded-full border flex items-center justify-center text-xs font-medium ${
                 showExplanation && index === currentQuestion.correctIndex
                   ? 'border-emerald-500 bg-emerald-500 text-white'
@@ -136,7 +136,7 @@ export default function InteractiveQuiz({ questions, onComplete }: InteractiveQu
                   String.fromCharCode(65 + index)
                 )}
               </div>
-              <span className="text-sm">{option}</span>
+              <span className="min-w-0 break-words text-sm">{option}</span>
             </div>
           </button>
         ))}
@@ -147,7 +147,7 @@ export default function InteractiveQuiz({ questions, onComplete }: InteractiveQu
           <p className={`text-sm font-medium ${isCorrect ? 'text-emerald-800' : 'text-amber-800'}`}>
             {isCorrect ? 'Correct!' : 'Incorrect'}
           </p>
-          <p className={`text-sm mt-1 ${isCorrect ? 'text-emerald-700' : 'text-amber-700'}`}>
+          <p className={`mt-1 break-words text-sm ${isCorrect ? 'text-emerald-700' : 'text-amber-700'}`}>
             {currentQuestion.explanation}
           </p>
         </div>

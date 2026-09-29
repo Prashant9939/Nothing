@@ -40,18 +40,18 @@ export default function ResourceList({ resources }: ResourceListProps) {
           href={resource.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all"
+          className="flex min-w-0 items-center justify-between gap-3 p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all"
         >
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg border ${getTypeColor(resource.type)}`}>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className={`shrink-0 p-2 rounded-lg border ${getTypeColor(resource.type)}`}>
               {getIcon(resource.type)}
             </div>
-            <div>
-              <h4 className="text-sm font-medium text-slate-900">{resource.title}</h4>
+            <div className="min-w-0">
+              <h4 className="break-words text-sm font-medium text-slate-900">{resource.title}</h4>
               <span className="text-xs text-slate-500 capitalize">{resource.type}</span>
             </div>
           </div>
-          <ExternalLink className="w-4 h-4 text-slate-400" />
+          <ExternalLink className="h-4 w-4 shrink-0 text-slate-400" />
         </a>
       ))}
     </div>

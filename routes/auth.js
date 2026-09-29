@@ -4,8 +4,8 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
+const { passwordPolicyError } = require('../lib/passwordPolicy');
 const { DOC_COLUMNS } = require('../lib/docNumbers');
-const registry = require('../lib/supabaseRegistry');
 
 const router = express.Router();
 
@@ -74,8 +74,9 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const policyError = passwordPolicyError(password);
+    if (policyError) {
+      return res.status(400).json({ error: policyError });
     }
 
     const existing = await db.get('SELECT id FROM users WHERE email = ?', email.toLowerCase());
@@ -96,7 +97,6 @@ router.post('/register', async (req, res) => {
       hashedPassword);
 
     const user = await db.get('SELECT * FROM users WHERE id = ?', result.lastInsertRowid);
-    registry.enqueueStudent(user.id);
     const token = signToken(user);
 
     res.status(201).json({
@@ -141,7 +141,6 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid login details. Check your email or phone and password and try again.' });
     }
 
-    if (user.role === 'admin') registry.enqueueAdminLogin(user.id);
     const token = signToken(user);
 
     res.json({
@@ -185,7 +184,6 @@ router.put('/profile', authenticateToken, async (req, res) => {
       university ?? null, college ?? null, course ?? null, year ?? null,
       req.user.id);
 
-    registry.enqueueStudent(req.user.id);
     const user = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);
     res.json({ message: 'Profile updated', user: publicUser(user) });
   } catch (err) {
@@ -203,8 +201,9 @@ router.put('/change-password', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Current password and new password are required' });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const policyError = passwordPolicyError(newPassword);
+    if (policyError) {
+      return res.status(400).json({ error: policyError });
     }
 
     const user = await db.get('SELECT id, password FROM users WHERE id = ?', req.user.id);
@@ -276,8 +275,9 @@ router.post('/reset-password', recoveryLimiter, async (req, res) => {
     if (newPassword !== confirmPassword) {
       return res.status(400).json({ error: 'Passwords do not match' });
     }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const policyError = passwordPolicyError(newPassword);
+    if (policyError) {
+      return res.status(400).json({ error: policyError });
     }
 
     const user = await findUserByIdentity({ email, phone, regNo, rollNo });

@@ -18,7 +18,6 @@ const {
 const { getReportContent } = require('../data/reportContent');
 const { streamReport } = require('../lib/reportPdf');
 const { authenticateToken } = require('../middleware/auth');
-const registry = require('../lib/supabaseRegistry');
 
 const router = express.Router();
 
@@ -348,9 +347,7 @@ router.get('/download/offer-letter/:enrollmentId', authenticateToken, async (req
     return res.status(403).json({ error: 'Complete payment to download the offer letter.' });
   }
 
-  const hadOfferNo = !!enrollment.offerNo;
   const offerNo = await ensureEnrollmentNumber(db, enrollment, 'offerNo');
-  if (!hadOfferNo) registry.enqueueEnrollment(enrollment.id);
   const qrBuffer = await makeQr(offerNo);
   const doc = startPdf(res, `offer-letter-${enrollment.id}.pdf`, { watermark: 'OFFER LETTER' });
   const w = doc.page.width;
@@ -625,9 +622,7 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
   const internship = await db.get('SELECT * FROM internships WHERE id = ?', enrollment.internshipId);
   const content = getReportContent(internship.category, internship);
 
-  const hadReportNo = !!enrollment.reportNo;
   const reportNo = await ensureEnrollmentNumber(db, enrollment, 'reportNo');
-  if (!hadReportNo) registry.enqueueEnrollment(enrollment.id);
   const qrBuffer = await makeQr(reportNo);
   const duration = enrollment.duration || 30;
   const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : 'N/A';
@@ -678,9 +673,7 @@ router.get('/download/attendance/:enrollmentId', authenticateToken, async (req, 
     return res.status(403).json({ error: 'Complete payment to download the attendance sheet.' });
   }
 
-  const hadAttendanceNo = !!enrollment.attendanceNo;
   const attendanceNo = await ensureEnrollmentNumber(db, enrollment, 'attendanceNo');
-  if (!hadAttendanceNo) registry.enqueueEnrollment(enrollment.id);
   const qrBuffer = await makeQr(attendanceNo);
   const doc = startPdf(res, `attendance-${enrollment.id}.pdf`, { watermark: 'ATTENDANCE' });
   const w = doc.page.width;

@@ -194,23 +194,23 @@ export default function StudentExam() {
   if (!started) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center px-4">
-        <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-soft">
+        <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-soft sm:p-10">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-700">
             <ClipboardList size={26} />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-1">{exam.internshipTitle} - Final Exam</h2>
+          <h2 className="break-words text-2xl font-bold text-slate-900 mb-1">{exam.internshipTitle} - Final Exam</h2>
           <p className="mb-8 text-slate-500">Test your knowledge and earn your certificate</p>
-          <div className="mb-8 grid grid-cols-3 gap-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-2xl font-bold text-slate-900">{exam.totalQuestions}</div>
+          <div className="mb-8 grid grid-cols-3 gap-2 sm:gap-4">
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:p-4">
+              <div className="break-words text-xl font-bold text-slate-900 sm:text-2xl">{exam.totalQuestions}</div>
               <div className="mt-1 text-xs text-slate-500">Questions</div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-2xl font-bold text-slate-900">{exam.duration} min</div>
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:p-4">
+              <div className="break-words text-xl font-bold text-slate-900 sm:text-2xl">{exam.duration} min</div>
               <div className="mt-1 text-xs text-slate-500">Duration</div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-2xl font-bold text-emerald-600">{exam.passingMarks}%</div>
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:p-4">
+              <div className="break-words text-xl font-bold text-emerald-600 sm:text-2xl">{exam.passingMarks}%</div>
               <div className="mt-1 text-xs text-slate-500">Passing</div>
             </div>
           </div>
@@ -267,7 +267,7 @@ export default function StudentExam() {
           Tab switch detected! ({tabSwitchCount} total). This will be recorded.
         </div>
       )}
-      <div className="flex flex-col items-start gap-4 lg:flex-row">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft sm:p-8">
           <div className="mb-6 border-b border-slate-100 pb-6">
             <div className="flex items-center justify-between gap-4">
@@ -292,13 +292,13 @@ export default function StudentExam() {
           </div>
 
           <div className="mb-8">
-            <p className="mb-6 text-lg text-slate-900">{questions[currentQ]?.question}</p>
+            <p className="mb-6 break-words text-lg text-slate-900">{questions[currentQ]?.question}</p>
             <div className="space-y-3">
               {questions[currentQ]?.options.map((opt: string, i: number) => (
                 <button
                   key={i}
                   onClick={() => selectAnswer(currentQ, i)}
-                  className={`w-full rounded-xl border p-4 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
+                  className={`w-full break-words rounded-xl border p-4 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
                     answers[currentQ] === i ? 'border-emerald-500 bg-emerald-50 text-slate-900 font-medium ring-1 ring-emerald-500/40' : 'border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
                   }`}
                 >

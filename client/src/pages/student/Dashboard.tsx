@@ -72,7 +72,7 @@ export default function StudentDashboard() {
         </div>
 
         {/* Features - 3D cards */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {[
             { icon: <RocketIcon size={20} />, title: 'Industry Projects', desc: 'Work on real-world projects', color: 'text-slate-700 bg-slate-100' },
             { icon: <BookOpenIcon size={20} />, title: 'Structured Learning', desc: 'Step-by-step modules', color: 'text-emerald-700 bg-emerald-50' },
@@ -134,7 +134,7 @@ export default function StudentDashboard() {
       </div>
 
       {/* Active Program + Quick Actions */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           {activeEnrollment ? (
             <ActiveCard enrollment={activeEnrollment} payments={payments} exams={exams} certificates={certificates} />
@@ -190,7 +190,7 @@ export default function StudentDashboard() {
             <h2 className="text-sm font-semibold text-slate-900">Completed Programs</h2>
             <span className="text-xs text-slate-400">{completedEnrollments.length} total</span>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {completedEnrollments.map(enrollment => {
               const payment = payments.find(p => p.enrollmentId === enrollment.id);
               const exam = exams.find(e => e.enrollmentId === enrollment.id);

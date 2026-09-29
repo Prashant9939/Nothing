@@ -92,6 +92,13 @@ app.use((req, res, next) => {
   ].join('; '));
   next();
 });
+// The database (schema + seeds) and brand settings must be ready before any
+// request is served. On Vercel the function starts handling requests as soon
+// as it is required, so hold them here; locally `ready` resolves before
+// app.listen anyway.
+const ready = db.ready.then(() => refreshBrand());
+app.use((req, res, next) => ready.then(() => next()).catch(next));
+
 // Razorpay webhook must run before express.json() — its signature is computed
 // over the raw request body.
 app.use('/api/razorpay', webhookRoutes);
@@ -134,18 +141,23 @@ app.use((err, req, res, next) => {
   res.status(500).json(body);
 });
 
-// The database (schema + seed data) must be ready before serving requests.
-db.ready
-  .then(async () => {
-    await refreshBrand();
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-      console.log(`API available at http://localhost:${PORT}/api`);
+// Locally: start listening only once the database and brand are ready.
+// On Vercel (see api/index.js) the app is exported instead, no port is
+// opened, and each incoming request waits on `ready` above.
+if (process.env.VERCEL) {
+  ready.catch((err) => console.error('Database initialization failed:', err));
+} else {
+  ready
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+        console.log(`API available at http://localhost:${PORT}/api`);
+      });
+    })
+    .catch((err) => {
+      console.error('Database initialization failed:', err);
+      process.exit(1);
     });
-  })
-  .catch((err) => {
-    console.error('Database initialization failed:', err);
-    process.exit(1);
-  });
+}
 
 module.exports = app;

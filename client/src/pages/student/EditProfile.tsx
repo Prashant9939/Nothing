@@ -6,6 +6,8 @@ import { studentApi, institutionApi } from '../../api';
 import { biharUniversities } from '../../data/biharUniversities';
 import SearchableSelect from '../../components/SearchableSelect';
 import { PageLoader, EmptyState, Button, Card, Input, PasswordField } from '../../components/ui';
+import PasswordHints from '../../components/ui/PasswordHints';
+import { passwordChecks, passwordPolicyError } from '../../passwordPolicy';
 import { UserIcon, ShieldCheckIcon, CheckIcon, PencilIcon, XIcon, BookOpenIcon } from '@animateicons/react/lucide';
 
 const initialForm = { firstName: '', lastName: '', email: '', phone: '', university: '', college: '', course: '', year: '' };
@@ -105,7 +107,8 @@ export default function EditProfile() {
     e.preventDefault();
     setPwError('');
     if (passwords.newPassword !== passwords.confirmPassword) { setPwError('New passwords do not match'); return; }
-    if (passwords.newPassword.length < 8) { setPwError('Password must be at least 8 characters'); return; }
+    const policyError = passwordPolicyError(passwords.newPassword);
+    if (policyError) { setPwError(policyError); return; }
     setPasswordSaving(true);
     try {
       await studentApi.changePassword({ currentPassword: passwords.currentPassword, newPassword: passwords.newPassword });
@@ -119,12 +122,8 @@ export default function EditProfile() {
   };
 
   const pwStrength = (value: string) => {
-    let s = 0;
-    if (value.length >= 8) s++;
-    if (/[A-Z]/.test(value)) s++;
-    if (/[0-9]/.test(value)) s++;
-    if (/[^A-Za-z0-9]/.test(value)) s++;
-    return s;
+    const passed = Object.values(passwordChecks(value)).filter(Boolean).length;
+    return Math.min(4, Math.ceil((passed / 5) * 4));
   };
   const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong'];
   const strengthColor = ['', 'bg-red-500', 'bg-amber-500', 'bg-sky-500', 'bg-emerald-500'];
@@ -293,7 +292,7 @@ export default function EditProfile() {
               ) : (
                 <Input label="College Name" value={draft.college} onChange={(e) => setDraft({ ...draft, college: e.target.value })} required />
               )}
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <Input label="Course" value={draft.course} onChange={(e) => setDraft({ ...draft, course: e.target.value })} required />
                 <Input label="Year" value={draft.year} onChange={(e) => setDraft({ ...draft, year: e.target.value })} required />
               </div>
@@ -335,6 +334,7 @@ export default function EditProfile() {
                   <p className={`mt-1.5 text-xs font-medium ${pw <= 1 ? 'text-red-500' : pw <= 2 ? 'text-amber-600' : pw <= 3 ? 'text-sky-600' : 'text-emerald-600'}`}>
                     {strengthLabel[pw]}
                   </p>
+                  <PasswordHints value={passwords.newPassword} className="mt-1.5" />
                 </div>
               )}
             </div>
@@ -401,7 +401,7 @@ function SectionCard({ id, icon, title, subtitle, action, error, children }: {
 
 function ViewRows({ rows }: { rows: { label: string; value: string }[] }) {
   return (
-    <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+    <dl className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
       {rows.map((r) => (
         <div key={r.label}>
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">{r.label}</dt>

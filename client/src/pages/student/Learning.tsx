@@ -113,7 +113,7 @@ export default function Learning() {
 
       {enrollments.length === 1 && (
         <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
-          <p className="text-sm text-slate-500">Track: <span className="font-semibold text-slate-900">{enrollments[0].internshipTitle}</span></p>
+          <p className="break-words text-sm text-slate-500">Track: <span className="font-semibold text-slate-900">{enrollments[0].internshipTitle}</span></p>
         </div>
       )}
 
@@ -231,20 +231,20 @@ function LearningSection({ enrollment, exam }: { enrollment: Enrollment; exam?: 
     <div className="space-y-6">
       {/* Progress Overview */}
       <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-soft">
-        <div className="flex items-center gap-6">
-          <CircularProgress value={progress?.percentage || 0} size={80} strokeWidth={8} />
-          <div className="flex-1">
-            <h3 className="font-semibold text-slate-900">{enrollment.internshipTitle}</h3>
+        <div className="flex flex-col items-center gap-5 sm:flex-row sm:gap-6">
+          <CircularProgress value={progress?.percentage || 0} size={80} strokeWidth={8} className="shrink-0" />
+          <div className="w-full min-w-0 flex-1">
+            <h3 className="break-words font-semibold text-slate-900">{enrollment.internshipTitle}</h3>
             <p className="mt-1 text-sm text-slate-500">
               {progress?.completedCount || 0} of {progress?.totalModules || modules.length} modules completed
             </p>
-            <div className="mt-3 flex items-center gap-4">
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
               <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <Clock className="h-3.5 w-3.5" />
+                <Clock className="h-3.5 w-3.5 shrink-0" />
                 {modules.reduce((acc, m) => acc + m.durationMinutes, 0)} min total
               </div>
               <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <BookOpen className="h-3.5 w-3.5" />
+                <BookOpen className="h-3.5 w-3.5 shrink-0" />
                 {modules.length} modules
               </div>
             </div>
@@ -317,25 +317,25 @@ function ModuleContentView({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
         <button
           onClick={onBack}
           aria-label="Back to module list"
-          className="rounded-lg bg-slate-100 p-2 text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+          className="shrink-0 rounded-lg bg-slate-100 p-2 text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-xl font-bold text-slate-900">{module.title}</h2>
-          <p className="mt-1 text-sm text-slate-500">{module.description}</p>
+          <p className="mt-1 break-words text-sm text-slate-500">{module.description}</p>
         </div>
         {!isCompleted && (
-          <Button variant="accent" loading={saving} onClick={handleMarkComplete}>
+          <Button variant="accent" loading={saving} onClick={handleMarkComplete} className="shrink-0">
             {saving ? 'Saving...' : 'Mark Complete'}
           </Button>
         )}
         {isCompleted && (
-          <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700">
+          <div className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700">
             <CheckCircle className="h-4 w-4" />
             Completed
           </div>
@@ -385,8 +385,8 @@ function ModuleContentView({
 
           {/* Reading Material */}
           <div>
-            <div className="mb-3 flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-slate-700" />
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <BookOpen className="h-4 w-4 shrink-0 text-slate-700" />
               <h3 className="text-sm font-semibold text-slate-900">Reading Material</h3>
               <span className="text-xs text-slate-400">
                 {module.contentSections?.length || 0} section{(module.contentSections?.length || 0) === 1 ? '' : 's'} for this topic
@@ -401,9 +401,9 @@ function ModuleContentView({
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-[11px] font-bold text-slate-700">
                         {index + 1}
                       </span>
-                      <h4 className="text-base font-semibold text-slate-900">{section.title}</h4>
+                      <h4 className="min-w-0 break-words text-base font-semibold text-slate-900">{section.title}</h4>
                     </div>
-                    <p className="whitespace-pre-line pl-9 text-sm leading-relaxed text-slate-600">{section.content}</p>
+                    <p className="whitespace-pre-line break-words pl-9 text-sm leading-relaxed text-slate-600">{section.content}</p>
                     {section.codeExample && (
                       <div className="mt-4 pl-9">
                         <CodeBlock code={section.codeExample} language={section.language || 'javascript'} />

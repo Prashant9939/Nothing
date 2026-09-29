@@ -25,10 +25,11 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
-  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+  useEffect(() => { setMobileOpen(false); setProfileOpen(false); }, [location.pathname]);
 
-  const handleLogout = async () => { await logout(); navigate('/'); };
+  const handleLogout = async () => { setProfileOpen(false); await logout(); navigate('/'); };
 
   const links = [
     { path: '/admin', label: 'Dashboard', icon: 'dashboard' },
@@ -48,9 +49,10 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-[#eef0f4]">
       {mobileOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm" onClick={() => setMobileOpen(false)} />}
+      {profileOpen && <div className="fixed inset-0 z-20 lg:hidden" onClick={() => setProfileOpen(false)} aria-hidden="true" />}
 
       {/* Sidebar */}
-      <aside className={`fixed top-0 left-0 h-screen z-50 flex flex-col transition-all duration-300 ease-in-out
+      <aside className={`fixed top-0 left-0 h-dvh w-64 z-50 flex flex-col transition-all duration-300 ease-in-out
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
         ${collapsed ? 'lg:w-[72px]' : 'lg:w-64'}
       `}>
@@ -107,14 +109,14 @@ export default function AdminLayout() {
                   <div className="w-8 h-8 bg-gradient-to-br from-slate-200 to-white rounded-full flex items-center justify-center text-xs font-bold text-slate-900 shrink-0 shadow-[0_2px_8px_rgba(255,255,255,0.1)]">
                     {user?.firstName?.[0]}{user?.lastName?.[0]}
                   </div>
-                  <div className="min-w-0 hidden lg:block">
+                  <div className="min-w-0">
                     <p className="text-xs font-medium text-slate-200 truncate">{user?.firstName} {user?.lastName}</p>
                     <p className="text-[10px] text-slate-500 truncate">Administrator</p>
                   </div>
                 </div>
                 <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2 text-slate-500 rounded-xl text-xs font-medium hover:bg-red-500/10 hover:text-red-400 transition-all">
                   <LogOutIcon size={14} />
-                  <span className="hidden lg:block">Logout</span>
+                  <span>Logout</span>
                 </button>
               </>
             ) : (
@@ -153,8 +155,40 @@ export default function AdminLayout() {
               <BellIcon size={18} />
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white shadow-sm" />
             </button>
-            <div className="w-8 h-8 bg-gradient-to-br from-slate-700 to-slate-900 rounded-full flex items-center justify-center text-xs font-bold text-white lg:hidden shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
-              {user?.firstName?.[0]}{user?.lastName?.[0]}
+            <div className="relative lg:hidden">
+              <button
+                type="button"
+                onClick={() => setProfileOpen((v) => !v)}
+                aria-label="Open profile menu"
+                aria-expanded={profileOpen}
+                className="w-8 h-8 bg-gradient-to-br from-slate-700 to-slate-900 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-[0_2px_8px_rgba(0,0,0,0.2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+              >
+                {user?.firstName?.[0]}{user?.lastName?.[0]}
+              </button>
+              {profileOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lift">
+                  <div className="px-3 py-2 border-b border-gray-100">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{user?.firstName} {user?.lastName}</p>
+                    <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                  </div>
+                  <Link
+                    to="/admin/settings"
+                    onClick={() => setProfileOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <SettingsIcon size={14} />
+                    Settings
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <LogOutIcon size={14} />
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>

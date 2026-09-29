@@ -4,11 +4,6 @@ node_modules/
 # Secrets / environment (never commit)
 .env
 
-# Local database + backups + WAL files
-database.sqlite*
-*.sqlite-wal
-*.sqlite-shm
-
 # Build output
 client/dist/
 
@@ -25,3 +20,6 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Vercel project link (created by vercel link / CLI)
+.vercel/

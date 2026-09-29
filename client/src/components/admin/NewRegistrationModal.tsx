@@ -4,6 +4,8 @@ import { X } from 'lucide-react';
 import { adminApi, institutionApi } from '../../api';
 import { usePopup } from '../../context/PopupContext';
 import SearchableSelect from '../SearchableSelect';
+import PasswordHints from '../ui/PasswordHints';
+import { passwordPolicyError } from '../../passwordPolicy';
 import { biharUniversities } from '../../data/biharUniversities';
 
 interface Props {
@@ -71,7 +73,8 @@ export default function NewRegistrationModal({ open, onClose, onCreated }: Props
       setError('Invalid email format'); return;
     }
     if (form.dob > today) { setError('Date of birth cannot be in the future'); return; }
-    if (form.password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    const policyError = passwordPolicyError(form.password);
+    if (policyError) { setError(policyError); return; }
     if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return; }
     if (!form.registeredAt || form.registeredAt > today) {
       setError('Registration date cannot be in the future'); return;
@@ -233,9 +236,10 @@ export default function NewRegistrationModal({ open, onClose, onCreated }: Props
             <div className="space-y-3">
               <p className={sectionTitle}>Security</p>
               <div className="grid grid-cols-2 gap-3">
-                <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Create password *" minLength={8} className={inputCls} />
+                <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Create password *" minLength={6} className={inputCls} />
                 <input type="password" value={form.confirmPassword} onChange={(e) => set('confirmPassword', e.target.value)} placeholder="Confirm password *" className={inputCls} />
               </div>
+              <PasswordHints value={form.password} className="mt-0" />
               <p className="text-xs text-gray-400">Share these credentials with the student — they can sign in immediately.</p>
             </div>
           </div>

@@ -90,7 +90,7 @@ export default function ExamPage() {
             icon={<CheckCircle2 className="h-4 w-4" />}
             iconClass="bg-emerald-100 text-emerald-600"
           />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {passed.map(exam => (
               <PassedCard
                 key={exam.id}
@@ -110,7 +110,7 @@ export default function ExamPage() {
             icon={<CalendarClock className="h-4 w-4" />}
             iconClass="bg-slate-100 text-slate-700"
           />
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {upcoming.map(exam => (
               <UpcomingCard key={exam.id} exam={exam} />
             ))}
@@ -127,7 +127,7 @@ export default function ExamPage() {
             icon={<BookOpen className="h-4 w-4" />}
             iconClass="bg-slate-100 text-slate-700"
           />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {examless.map(enrollment => (
               <div key={enrollment.id} className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 shadow-soft">
                 <h3 className="text-sm font-semibold text-slate-900">{enrollment.internshipTitle}</h3>

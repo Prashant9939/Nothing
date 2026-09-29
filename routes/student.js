@@ -4,10 +4,10 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const { authenticateToken } = require('../middleware/auth');
+const { passwordPolicyError } = require('../lib/passwordPolicy');
 const { newReceiptNumber } = require('../lib/docNumbers');
 const rzp = require('../lib/razorpay');
 const { completePayment } = require('../lib/payments');
-const registry = require('../lib/supabaseRegistry');
 
 const router = express.Router();
 
@@ -30,7 +30,6 @@ router.put('/profile', authenticateToken, async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   await db.run('UPDATE users SET firstName = ?, lastName = ?, phone = ?, university = ?, college = ?, course = ?, year = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', firstName, lastName, phone, university, college, course, year, req.user.id);
-  registry.enqueueStudent(req.user.id);
 
   const updated = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role FROM users WHERE id = ?', req.user.id);
   res.json({ message: 'Profile updated', user: updated });
@@ -38,6 +37,13 @@ router.put('/profile', authenticateToken, async (req, res) => {
 
 router.put('/change-password', authenticateToken, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current password and new password are required' });
+  }
+  const policyError = passwordPolicyError(newPassword);
+  if (policyError) {
+    return res.status(400).json({ error: policyError });
+  }
   const user = await db.get('SELECT password FROM users WHERE id = ?', req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -137,7 +143,6 @@ router.post('/complete-module/:enrollmentId', authenticateToken, async (req, res
   const progress = totalModules.count > 0 ? Math.round((completed.length / totalModules.count) * 100) : 0;
 
   await db.run('UPDATE enrollments SET completedModules = ?, progress = ? WHERE id = ?', JSON.stringify(completed), progress, enrollment.id);
-  registry.enqueueEnrollment(enrollment.id);
 
   res.json({ message: 'Module completed', completedModules: completed, progress });
 });
@@ -161,7 +166,6 @@ router.post('/uncomplete-module/:enrollmentId', authenticateToken, async (req, r
   const progress = totalModules.count > 0 ? Math.round((completed.length / totalModules.count) * 100) : 0;
 
   await db.run('UPDATE enrollments SET completedModules = ?, progress = ? WHERE id = ?', JSON.stringify(completed), progress, enrollment.id);
-  registry.enqueueEnrollment(enrollment.id);
 
   res.json({ message: 'Module uncompleted', completedModules: completed, progress });
 });
@@ -204,13 +208,11 @@ router.post('/enroll', authenticateToken, async (req, res) => {
     if (pending.amount !== internship.price) {
       await db.run('UPDATE payments SET amount = ? WHERE id = ?', internship.price, pending.id);
       pending.amount = internship.price;
-      registry.enqueuePayment(pending.id);
     }
     return res.json({ message: 'Payment pending for this internship.', payment: pending });
   }
 
   const paymentResult = await db.run('INSERT INTO payments (userId, enrollmentId, internshipId, amount, receiptNumber, status) VALUES (?, NULL, ?, ?, ?, ?)', req.user.id, internshipId, internship.price, await newReceiptNumber(db), 'pending');
-  registry.enqueuePayment(paymentResult.lastInsertRowid);
 
   const payment = await db.get('SELECT * FROM payments WHERE id = ?', paymentResult.lastInsertRowid);
   res.status(201).json({ message: 'Payment pending. Complete the payment to enroll.', payment });
@@ -385,7 +387,6 @@ router.post('/exam/:examId/submit', authenticateToken, async (req, res) => {
       await db.run('INSERT INTO certificates (userId, enrollmentId, examId, certificateId, grade, score) VALUES (?, ?, ?, ?, ?, ?)', req.user.id, exam.enrollmentId, exam.id, certId, grade, percentage);
     }
     await db.run("UPDATE enrollments SET status = 'completed' WHERE id = ?", exam.enrollmentId);
-    registry.enqueueEnrollment(exam.enrollmentId);
   }
 
   const updatedExam = await db.get('SELECT * FROM exams WHERE id = ?', exam.id);

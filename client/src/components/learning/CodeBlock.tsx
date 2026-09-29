@@ -53,7 +53,7 @@ export default function CodeBlock({ code, language = 'javascript' }: CodeBlockPr
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>
-      <pre className="p-4 bg-slate-900 text-slate-100 text-sm overflow-x-auto">
+      <pre className="max-w-full p-4 bg-slate-900 text-slate-100 text-sm overflow-x-auto">
         <code dangerouslySetInnerHTML={{ __html: syntaxHighlight(code, language) }} />
       </pre>
     </div>

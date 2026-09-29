@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Trash2, Check, X } from 'lucide-react';
+import { Pencil, Trash2, Check, X, FileDown } from 'lucide-react';
 import { adminApi } from '../../api';
 import { usePopup } from '../../context/PopupContext';
 import type { Internship } from '../../api';
@@ -16,6 +16,7 @@ export default function AdminInternships() {
   const [questionWarning, setQuestionWarning] = useState<{ track: string; count: number } | null>(null);
   const [priceEdit, setPriceEdit] = useState<{ id: number; value: string } | null>(null);
   const [priceSaving, setPriceSaving] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const loadInternships = () => adminApi.getInternships().then((res) => { setInternships(res.data.internships); setLoading(false); }).catch(() => setLoading(false));
 
@@ -62,6 +63,37 @@ export default function AdminInternships() {
     }
   };
   const toggleActive = async (i: Internship) => { await adminApi.updateInternship(i.id, { isActive: i.isActive ? 0 : 1 }); loadInternships(); };
+
+  const downloadAnswerKey = async (i: Internship) => {
+    if (downloadingId) return;
+    setDownloadingId(i.id);
+    try {
+      const res = await fetch(`/api/admin/internships/${i.id}/answer-key`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Could not generate the answer key.');
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename=([^;]+)/);
+      const filename = match ? match[1] : `answer-key-${i.category}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      popup.success('Answer key downloaded.', 'Answer Key');
+    } catch (err: any) {
+      popup.error(err.message || 'Could not download the answer key. Please try again.', 'Download Failed');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   const savePrice = async (id: number) => {
     if (!priceEdit || priceSaving) return;
@@ -199,6 +231,16 @@ export default function AdminInternships() {
                         className="p-2 rounded-lg bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
                       >
                         <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadAnswerKey(i)}
+                        disabled={downloadingId !== null}
+                        title="Download answer key"
+                        aria-label={`Download answer key for ${i.title}`}
+                        className="p-2 rounded-lg bg-emerald-50 text-emerald-600 transition-colors hover:bg-emerald-100 hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-50"
+                      >
+                        {downloadingId === i.id ? <span className="block w-3.5 h-3.5 border-[1.5px] border-emerald-300 border-t-emerald-700 rounded-full animate-spin" /> : <FileDown size={14} />}
                       </button>
                       <button
                         type="button"

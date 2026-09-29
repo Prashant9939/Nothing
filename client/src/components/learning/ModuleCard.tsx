@@ -28,7 +28,7 @@ export default function ModuleCard({ module, isCompleted, isLocked, onClick }: M
         if (isLocked) return;
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
       }}
-      className={`rounded-2xl border bg-white p-5 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
+      className={`group rounded-2xl border bg-white p-5 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
         isLocked
           ? 'cursor-not-allowed border-slate-200 opacity-60'
           : isCompleted
@@ -36,8 +36,8 @@ export default function ModuleCard({ module, isCompleted, isLocked, onClick }: M
             : 'cursor-pointer border-slate-200 shadow-soft hover:border-slate-300 hover:shadow-lift'
       }`}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
           <div className={`flex h-12 w-12 items-center justify-center rounded-xl text-sm font-bold ${
             isCompleted
               ? 'border border-emerald-200 bg-emerald-100 text-emerald-700'
@@ -47,9 +47,9 @@ export default function ModuleCard({ module, isCompleted, isLocked, onClick }: M
           }`}>
             {isCompleted ? <CheckCircle className="h-6 w-6" /> : isLocked ? <Lock className="h-5 w-5" /> : module.moduleOrder}
           </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h4 className={`text-sm font-semibold ${isCompleted ? 'text-emerald-800' : 'text-slate-900'}`}>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h4 className={`min-w-0 break-words text-sm font-semibold ${isCompleted ? 'text-emerald-800' : 'text-slate-900'}`}>
                 {module.title}
               </h4>
               {isCompleted && (
@@ -65,7 +65,7 @@ export default function ModuleCard({ module, isCompleted, isLocked, onClick }: M
               )}
             </div>
             <p className="mt-1 line-clamp-2 text-xs text-slate-500">{module.description}</p>
-            <div className="mt-2 flex items-center gap-3">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <span className={`rounded border px-2 py-0.5 text-[10px] font-medium ${getDifficultyColor(module.difficulty)}`}>
                 {module.difficulty}
               </span>
@@ -83,7 +83,7 @@ export default function ModuleCard({ module, isCompleted, isLocked, onClick }: M
           </div>
         </div>
         {!isLocked && !isCompleted && (
-          <span aria-hidden="true" className="rounded-lg bg-slate-100 p-2 text-slate-600 transition-colors group-hover:bg-slate-200">
+          <span aria-hidden="true" className="shrink-0 self-start rounded-lg bg-slate-100 p-2 text-slate-600 transition-colors group-hover:bg-slate-200">
             <Play className="h-4 w-4" />
           </span>
         )}

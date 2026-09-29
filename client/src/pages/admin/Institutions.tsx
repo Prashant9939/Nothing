@@ -211,7 +211,7 @@ export default function AdminInstitutions() {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Universities */}
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
@@ -220,7 +220,7 @@ export default function AdminInstitutions() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search..."
-              className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-700/20"
+              className="w-40 min-w-0 px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-700/20"
             />
           </div>
 
@@ -236,13 +236,13 @@ export default function AdminInstitutions() {
                 value={uniForm.shortName}
                 onChange={(e) => setUniForm({ ...uniForm, shortName: e.target.value })}
                 placeholder="Short name (e.g. PU)"
-                className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-700/20"
+                className="min-w-0 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-700/20"
               />
               <input
                 value={uniForm.location}
                 onChange={(e) => setUniForm({ ...uniForm, location: e.target.value })}
                 placeholder="Location (e.g. Patna)"
-                className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-700/20"
+                className="min-w-0 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-700/20"
               />
               <select
                 value={uniForm.type}
@@ -281,13 +281,13 @@ export default function AdminInstitutions() {
                     value={uniEditForm.shortName}
                     onChange={(e) => setUniEditForm({ ...uniEditForm, shortName: e.target.value })}
                     placeholder="Short name"
-                    className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-700/20"
+                    className="min-w-0 px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-700/20"
                   />
                   <input
                     value={uniEditForm.location}
                     onChange={(e) => setUniEditForm({ ...uniEditForm, location: e.target.value })}
                     placeholder="Location"
-                    className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-700/20"
+                    className="min-w-0 px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-700/20"
                   />
                   <select
                     value={uniEditForm.type}

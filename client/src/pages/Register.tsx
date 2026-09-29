@@ -6,6 +6,8 @@ import { biharUniversities } from '../data/biharUniversities';
 import { institutionApi } from '../api';
 import SearchableSelect from '../components/SearchableSelect';
 import AuthSplit from '../components/AuthSplit';
+import PasswordHints from '../components/ui/PasswordHints';
+import { passwordChecks, passwordPolicyError } from '../passwordPolicy';
 import { CheckIcon } from "@animateicons/react/lucide";
 import { EyeIcon } from "@animateicons/react/lucide";
 import { EyeOffIcon } from "@animateicons/react/lucide";
@@ -47,12 +49,8 @@ export default function Register() {
   }, [isAuthenticated, isLoading, navigate]);
 
   const passwordStrength = (pwd: string) => {
-    let s = 0;
-    if (pwd.length >= 8) s++;
-    if (/[A-Z]/.test(pwd)) s++;
-    if (/[0-9]/.test(pwd)) s++;
-    if (/[^A-Za-z0-9]/.test(pwd)) s++;
-    return s;
+    const passed = Object.values(passwordChecks(pwd)).filter(Boolean).length;
+    return Math.min(4, Math.ceil((passed / 5) * 4));
   };
 
   const strength = passwordStrength(form.password);
@@ -89,6 +87,8 @@ export default function Register() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    const policyError = passwordPolicyError(form.password);
+    if (policyError) { setError(policyError); return; }
     if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return; }
     if (!terms) { setError('Please agree to Terms'); return; }
     setLoading(true);
@@ -291,7 +291,7 @@ export default function Register() {
         <form onSubmit={handleSubmit} className="space-y-3">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Security</p>
           <div className="relative">
-            <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={(e) => updateField('password', e.target.value)} placeholder="Create password *" required minLength={8} className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all pr-10" />
+            <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={(e) => updateField('password', e.target.value)} placeholder="Create password *" required minLength={6} className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all pr-10" />
             <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
               {showPassword ? (
                 <EyeOffIcon size={20} />
@@ -312,6 +312,7 @@ export default function Register() {
               </span>
             </div>
           )}
+          <PasswordHints value={form.password} />
           <input type="password" value={form.confirmPassword} onChange={(e) => updateField('confirmPassword', e.target.value)} placeholder="Confirm password *" required className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all" />
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="w-4 h-4 mt-0.5 rounded border-gray-300 text-orange-500 focus:ring-orange-500/20" />

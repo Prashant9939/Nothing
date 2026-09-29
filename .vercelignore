@@ -1,0 +1,10 @@
+# Files excluded from Vercel CLI uploads (Git deploys use .gitignore instead).
+.env
+.env.*
+!.env.example
+node_modules
+client/node_modules
+client/dist
+.vercel
+*.log
+.planning

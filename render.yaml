@@ -31,6 +31,3 @@ services:
       # Set it in the Render dashboard: Environment -> DATABASE_URL -> Save.
       - key: DATABASE_URL
         sync: false
-      # No Supabase keys on Render — legacy mirror stays off
-      - key: SUPABASE_SYNC
-        value: "false"

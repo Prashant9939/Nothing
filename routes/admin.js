@@ -3,9 +3,10 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
-const registry = require('../lib/supabaseRegistry');
 const { completePayment } = require('../lib/payments');
 const { refreshBrand } = require('../lib/documentBrand');
+const { streamAnswerKey } = require('../lib/answerKeyPdf');
+const { passwordPolicyError } = require('../lib/passwordPolicy');
 
 const router = express.Router();
 
@@ -219,10 +220,23 @@ router.put('/internships/:id', authenticateToken, adminOnly, async (req, res) =>
 router.delete('/internships/:id', authenticateToken, adminOnly, async (req, res) => {
   const existing = await db.get('SELECT * FROM internships WHERE id = ?', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Internship not found' });
-  const affectedEnrollments = (await db.all('SELECT id FROM enrollments WHERE internshipId = ?', req.params.id)).map((row) => row.id);
   await db.run('DELETE FROM internships WHERE id = ?', req.params.id);
-  if (affectedEnrollments.length > 0) registry.enqueueRemoveEnrollments(affectedEnrollments);
   res.json({ message: 'Internship deleted' });
+});
+
+router.get('/internships/:id/answer-key', authenticateToken, adminOnly, async (req, res) => {
+  const internship = await db.get('SELECT * FROM internships WHERE id = ?', req.params.id);
+  if (!internship) return res.status(404).json({ error: 'Internship not found' });
+
+  const questions = await db.all(
+    'SELECT id, question, optionA, optionB, optionC, optionD, correct FROM questions WHERE track = ? AND isActive = 1 ORDER BY id',
+    internship.category
+  );
+  if (!questions.length) return res.status(400).json({ error: 'No active questions for this internship track' });
+
+  const generatedBy = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email;
+  const trackLabel = String(internship.category).replace(/(^|[-_])\w/g, (c) => c.replace(/[-_]/, ' ').toUpperCase());
+  streamAnswerKey(res, { internship, questions, generatedBy, trackLabel });
 });
 
 // ===================== USERS MANAGEMENT =====================
@@ -249,8 +263,9 @@ router.post('/users', authenticateToken, adminOnly, async (req, res) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const policyError = passwordPolicyError(password);
+    if (policyError) {
+      return res.status(400).json({ error: policyError });
     }
 
     const today = new Date().toISOString().slice(0, 10);
@@ -277,7 +292,6 @@ router.post('/users', authenticateToken, adminOnly, async (req, res) => {
       hashedPassword, `${regDate} 12:00:00`);
 
     const user = await db.get('SELECT id, firstName, lastName, email, role, createdAt FROM users WHERE id = ?', result.lastInsertRowid);
-    registry.enqueueStudent(user.id);
     res.status(201).json({ message: 'Registration created', user });
   } catch (err) {
     console.error('Admin registration error:', err);
@@ -309,7 +323,6 @@ router.put('/users/:id/role', authenticateToken, adminOnly, async (req, res) => 
     return res.status(400).json({ error: 'Invalid role' });
   }
   await db.run('UPDATE users SET role = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', role, req.params.id);
-  registry.enqueueRoleChange(Number(req.params.id), role);
   res.json({ message: 'User role updated' });
 });
 
@@ -324,7 +337,6 @@ router.delete('/users/:id', authenticateToken, adminOnly, async (req, res) => {
   await db.run('DELETE FROM enrollments WHERE userId = ?', req.params.id);
   await db.run('DELETE FROM sessions WHERE userId = ?', req.params.id);
   await db.run('DELETE FROM users WHERE id = ?', req.params.id);
-  registry.enqueueRemoveStudent(Number(req.params.id));
 
   res.json({ message: 'User deleted successfully' });
 });
@@ -347,14 +359,12 @@ router.put('/enrollments/:id/status', authenticateToken, adminOnly, async (req, 
     return res.status(400).json({ error: 'Invalid status' });
   }
   await db.run('UPDATE enrollments SET status = ? WHERE id = ?', status, req.params.id);
-  registry.enqueueEnrollment(Number(req.params.id));
   res.json({ message: 'Enrollment status updated' });
 });
 
 router.put('/enrollments/:id/progress', authenticateToken, adminOnly, async (req, res) => {
   const { progress } = req.body;
   await db.run('UPDATE enrollments SET progress = ? WHERE id = ?', progress, req.params.id);
-  registry.enqueueEnrollment(Number(req.params.id));
   res.json({ message: 'Progress updated' });
 });
 
@@ -421,8 +431,6 @@ router.put('/payments/:id/status', authenticateToken, adminOnly, async (req, res
     await completePayment(payment, { transactionId: transactionId || null });
   } else {
     await db.run('UPDATE payments SET status = ?, transactionId = COALESCE(?, transactionId), paidAt = CASE WHEN ? = "completed" THEN CURRENT_TIMESTAMP ELSE paidAt END WHERE id = ?', status, transactionId, status, req.params.id);
-    registry.enqueuePayment(Number(req.params.id));
-    if (payment.enrollmentId) registry.enqueueEnrollment(payment.enrollmentId);
   }
   res.json({ message: 'Payment status updated' });
 });
@@ -478,7 +486,6 @@ const applyResult = async (exam, score, status) => {
     await db.run('DELETE FROM certificates WHERE enrollmentId = ?', exam.enrollmentId);
     await db.run("UPDATE enrollments SET status = 'active' WHERE id = ? AND status = 'completed'", exam.enrollmentId);
   }
-  registry.enqueueEnrollment(exam.enrollmentId);
 };
 
 router.put('/exams/:id/result', authenticateToken, adminOnly, async (req, res) => {
@@ -606,7 +613,6 @@ router.put('/certificates/:id/marks', authenticateToken, adminOnly, async (req, 
   if (status === 'completed') {
     await db.run('UPDATE certificates SET score = ?, grade = ? WHERE id = ?', rounded, gradeFor(rounded), cert.id);
     await db.run("UPDATE enrollments SET status = 'completed' WHERE id = ?", cert.enrollmentId);
-    registry.enqueueEnrollment(cert.enrollmentId);
     const updated = await db.get('SELECT * FROM certificates WHERE id = ?', cert.id);
     return res.json({ message: `Marks updated to ${rounded}% (${updated.grade})`, certificate: updated });
   }
@@ -614,7 +620,6 @@ router.put('/certificates/:id/marks', authenticateToken, adminOnly, async (req, 
   // Failing score — revoke certificate, same rule as a failed exam submission
   await db.run('DELETE FROM certificates WHERE id = ?', cert.id);
   await db.run("UPDATE enrollments SET status = 'active' WHERE id = ? AND status = 'completed'", cert.enrollmentId);
-  registry.enqueueEnrollment(cert.enrollmentId);
   res.json({ message: `Marks updated to ${rounded}% — below passing (${passingMarks}%), certificate revoked`, revoked: true });
 });
 

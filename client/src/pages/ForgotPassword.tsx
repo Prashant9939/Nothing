@@ -3,6 +3,8 @@ import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../api';
 import AuthSplit from '../components/AuthSplit';
+import PasswordHints from '../components/ui/PasswordHints';
+import { passwordPolicyError } from '../passwordPolicy';
 import { EyeIcon } from "@animateicons/react/lucide";
 import { EyeOffIcon } from "@animateicons/react/lucide";
 import { CheckIcon } from "@animateicons/react/lucide";
@@ -55,8 +57,9 @@ export default function ForgotPassword() {
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match'); return;
     }
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters'); return;
+    const policyError = passwordPolicyError(newPassword);
+    if (policyError) {
+      setError(policyError); return;
     }
     setLoading(true);
     try {
@@ -221,7 +224,7 @@ export default function ForgotPassword() {
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="New password *"
                 required
-                minLength={8}
+                minLength={6}
                 className={`${inputBase} pr-12`}
               />
               <button
@@ -233,6 +236,7 @@ export default function ForgotPassword() {
                 {showPassword ? <EyeOffIcon size={20} /> : <EyeIcon size={20} />}
               </button>
             </div>
+            <PasswordHints value={newPassword} />
           </div>
           <div>
             <label htmlFor="fp-confirm" className="block text-sm font-medium text-gray-700 mb-1.5">Confirm password</label>
@@ -254,7 +258,7 @@ export default function ForgotPassword() {
               {newPassword === confirmPassword ? <><CheckIcon size={13} /> Passwords match</> : <><XIcon size={13} /> Passwords do not match yet</>}
             </p>
           )}
-          <p className="text-xs text-gray-400">At least 8 characters.</p>
+          <p className="text-xs text-gray-400">6+ characters with uppercase, lowercase, a number and a symbol.</p>
           <div className="flex gap-3 pt-1">
             <button
               type="button"

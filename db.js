@@ -1,4 +1,4 @@
-// PostgreSQL (Supabase) adapter — exposes a better-sqlite3-like surface:
+// PostgreSQL (Supabase) adapter — exposes a SQLite-like surface:
 //   await db.get(sql, ...params)   -> row | null
 //   await db.all(sql, ...params)   -> rows[]
 //   await db.run(sql, ...params)   -> { changes, lastInsertRowid }
@@ -460,9 +460,15 @@ if (universityCount === 0) {
 const { seedQuestions } = require('./data/seedQuestions');
 await seedQuestions(db);
 
-// Seed learning modules
-const learningModuleCount = await db.get('SELECT COUNT(*) as count FROM learning_modules');
-if (learningModuleCount.count === 0) {
+// Seed learning modules. Per-track and idempotent: the block runs whenever
+// ANY track still has no modules, and the insert below only inserts tracks
+// that currently have zero rows. Adding content for a new track therefore
+// backfills an existing database without ever duplicating tracks seeded before.
+const tracksMissingModules = (await db.get(`
+  SELECT COUNT(*) AS count FROM internships
+  WHERE id NOT IN (SELECT DISTINCT internshipId FROM learning_modules)
+`)).count;
+if (tracksMissingModules > 0) {
   // Look up each internship by title
   const webDev = await db.get("SELECT id FROM internships WHERE title = 'Web Development Pathway'");
   const python = await db.get("SELECT id FROM internships WHERE title = 'Python Software Engineering'");
@@ -472,7 +478,6 @@ if (learningModuleCount.count === 0) {
   const mobile = await db.get("SELECT id FROM internships WHERE title = 'Mobile App Development'");
 
   const learningModules = [];
-
   // ========== WEB DEVELOPMENT TRACK (6 modules) ==========
   if (webDev) {
     learningModules.push(
@@ -1260,17 +1265,37 @@ if (learningModuleCount.count === 0) {
     );
   }
 
-  if (learningModules.length > 0) {
+  // Tracks whose curriculum ships in data/learningModules/ instead of inline
+  // above. Resolved by internships.title, never by id, so the ids stay free to
+  // differ between environments.
+  for (const track of require('./data/learningModules')) {
+    const internship = await db.get('SELECT id FROM internships WHERE title = ?', track.internshipTitle);
+    if (!internship) {
+      console.log(`Seed learning modules: skipped "${track.internshipTitle}" — internship not found`);
+      continue;
+    }
+    for (const mod of track.modules) learningModules.push({ ...mod, internshipId: internship.id });
+  }
+
+  // Insert only tracks that currently have zero modules — a track already
+  // (even partially) seeded is left untouched rather than risked against
+  // duplicate moduleOrder rows.
+  const seededTracks = new Set(
+    (await db.all('SELECT DISTINCT internshipId FROM learning_modules')).map((row) => row.internshipId)
+  );
+  const pendingModules = learningModules.filter((mod) => !seededTracks.has(mod.internshipId));
+
+  if (pendingModules.length > 0) {
     const insertModule = (`INSERT INTO learning_modules (internshipId, title, description, moduleOrder, durationMinutes, difficulty, topics, learningObjectives, contentSections, quizQuestions, resources, videoUrl)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
-    for (const mod of learningModules) {
+    for (const mod of pendingModules) {
       await db.run(insertModule, mod.internshipId, mod.title, mod.description, mod.moduleOrder, mod.durationMinutes,
         mod.difficulty, mod.topics, mod.learningObjectives, mod.contentSections,
         mod.quizQuestions, mod.resources, mod.videoUrl);
     }
-    console.log(`Seed learning modules created: ${learningModules.length} modules`);
+    console.log(`Seed learning modules created: ${pendingModules.length} modules`);
   }
 }
 
