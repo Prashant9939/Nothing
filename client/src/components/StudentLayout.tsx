@@ -357,7 +357,7 @@ export default function StudentLayout() {
         <main className="p-4 sm:p-6 lg:p-8">
           <ErrorBoundary>
             <Suspense fallback={<PageLoader label="Loading..." className="h-[50vh]" />}>
-              <div key={location.pathname} className="animate-fade-in">
+              <div key={location.pathname} className="animate-page-in">
                 <Outlet />
               </div>
             </Suspense>

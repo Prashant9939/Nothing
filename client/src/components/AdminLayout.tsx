@@ -27,7 +27,7 @@ export default function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  useEffect(() => { setMobileOpen(false); setProfileOpen(false); }, [location.pathname]);
+  useEffect(() => { setMobileOpen(false); setProfileOpen(false); window.scrollTo(0, 0); }, [location.pathname]);
 
   const handleLogout = async () => { setProfileOpen(false); await logout(); navigate('/'); };
 
@@ -196,7 +196,9 @@ export default function AdminLayout() {
         {/* Content */}
         <main className="p-4 sm:p-6 lg:p-8">
           <Suspense fallback={<div className="flex h-[50vh] items-center justify-center"><Spinner size={36} /></div>}>
-            <Outlet />
+            <div key={location.pathname} className="animate-page-in">
+              <Outlet />
+            </div>
           </Suspense>
         </main>
       </div>
