@@ -332,6 +332,10 @@ await db.exec(`
 // Analytics events older than 90 days are dropped on startup to keep the table small
 await db.exec("DELETE FROM analytics_events WHERE createdAt < to_char(now() - interval '90 days', 'YYYY-MM-DD HH24:MI:SS')");
 
+// Same for expired JWT session rows (revocation registry) — rows die with the
+// token's exp claim, so the table never grows past active sessions.
+await db.run('DELETE FROM sessions WHERE expiresAt < ?', new Date().toISOString().slice(0, 19).replace('T', ' '));
+
 // Migration: add columns if missing
 const migrations = [
   'ALTER TABLE users ADD COLUMN university TEXT DEFAULT \'\'',

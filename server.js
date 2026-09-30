@@ -76,6 +76,12 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // HSTS only on HTTPS requests (req.secure honours X-Forwarded-Proto when
+  // TRUST_PROXY is set) — the header is ignored by browsers over plain HTTP,
+  // and never sending it on localhost keeps dev unaffected.
+  if (req.secure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self' https://checkout.razorpay.com",

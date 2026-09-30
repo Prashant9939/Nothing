@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const sessions = require('../lib/sessions');
 
 const USER_COLUMNS = `
   id, firstName, lastName, email, phone, university, college, course, year,
@@ -25,6 +26,12 @@ const authenticateToken = async (req, res, next) => {
       return res.status(401).json({ error: 'User not found. Please login again.' });
     }
 
+    // Server-side revocation: a signed JWT is only honoured while its row in
+    // `sessions` is alive (logout / password change / password reset delete it)
+    if (!(await sessions.isActive(token))) {
+      return res.status(401).json({ error: 'Session revoked. Please login again.' });
+    }
+
     req.user = user;
     req.token = token;
     next();
@@ -47,12 +54,12 @@ const optionalAuth = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await loadUser(decoded.id);
-    if (user) {
+    if (user && (await sessions.isActive(token))) {
       req.user = user;
       req.token = token;
     }
   } catch (_) {
-    // Token invalid, continue without auth
+    // Token invalid or revoked, continue without auth
   }
 
   next();

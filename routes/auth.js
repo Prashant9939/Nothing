@@ -1,11 +1,13 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { passwordPolicyError } = require('../lib/passwordPolicy');
 const { DOC_COLUMNS } = require('../lib/docNumbers');
+const sessions = require('../lib/sessions');
 
 const router = express.Router();
 
@@ -26,13 +28,29 @@ const recoveryLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// The contact form shares nothing with the auth budget — it gets its own,
+// much smaller one so a single IP cannot flood the contact_messages table.
+const contactLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many messages sent. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const DUMMY_HASH = bcrypt.hashSync('iqi-timing-equalizer', 12);
 
 const signToken = (user) => {
   return jwt.sign(
     { id: user.id, role: user.role },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+      // Unique per login: iat is second-granular, so two logins in the same
+      // second would otherwise mint a byte-identical token and collapse into
+      // ONE session row (logging out on one device would kill the other).
+      jwtid: crypto.randomBytes(16).toString('hex'),
+    }
   );
 };
 
@@ -98,6 +116,7 @@ router.post('/register', async (req, res) => {
 
     const user = await db.get('SELECT * FROM users WHERE id = ?', result.lastInsertRowid);
     const token = signToken(user);
+    await sessions.issueSession(user.id, token);
 
     res.status(201).json({
       message: 'Registration successful',
@@ -142,6 +161,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     const token = signToken(user);
+    await sessions.issueSession(user.id, token);
 
     res.json({
       message: 'Login successful',
@@ -156,6 +176,10 @@ router.post('/login', loginLimiter, async (req, res) => {
 
 // ===================== LOGOUT =====================
 router.post('/logout', authenticateToken, async (req, res) => {
+  // Kill the session row so this token is rejected from now on — the JWT
+  // itself cannot be invalidated, but the revocation check in the middleware
+  // makes logout immediate instead of waiting for the 7-day expiry.
+  await sessions.revoke(req.token);
   res.json({ message: 'Logged out successfully' });
 });
 
@@ -213,6 +237,11 @@ router.put('/change-password', authenticateToken, async (req, res) => {
 
     const hashed = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(12));
     await db.run('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', hashed, req.user.id);
+
+    // Password changed: every OTHER device's token dies immediately. The
+    // current session is kept so the user isn't logged out of the tab they
+    // just changed the password in.
+    await sessions.revokeAll(req.user.id, req.token);
 
     res.json({ message: 'Password changed successfully' });
   } catch (err) {
@@ -288,6 +317,10 @@ router.post('/reset-password', recoveryLimiter, async (req, res) => {
     const hashedPassword = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(12));
     await db.run('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', hashedPassword, user.id);
 
+    // Password reset (no authenticated session here): revoke EVERY issued
+    // token for the account, so a thief already holding a JWT is locked out.
+    await sessions.revokeAll(user.id);
+
     res.json({ message: 'Password updated successfully. You can now sign in with your new password.' });
   } catch (err) {
     console.error('Reset password error:', err);
@@ -296,7 +329,7 @@ router.post('/reset-password', recoveryLimiter, async (req, res) => {
 });
 
 // ===================== CONTACT FORM =====================
-router.post('/contact', async (req, res) => {
+router.post('/contact', contactLimiter, async (req, res) => {
   const { name, email, phone, subject, message } = req.body;
   if (!name || !email || !message) {
     return res.status(400).json({ error: 'Name, email, and message are required' });
@@ -305,13 +338,16 @@ router.post('/contact', async (req, res) => {
   if (!emailRegex.test(email)) {
     return res.status(400).json({ error: 'Invalid email format' });
   }
+  let result;
   try {
-    await db.run('INSERT INTO contact_messages (name, email, phone, subject, message) VALUES (?, ?, ?, ?, ?)', String(name).trim(), String(email).trim(), String(phone || '').trim(), String(subject || '').trim(), String(message).trim());
+    result = await db.run('INSERT INTO contact_messages (name, email, phone, subject, message) VALUES (?, ?, ?, ?, ?)', String(name).trim(), String(email).trim(), String(phone || '').trim(), String(subject || '').trim(), String(message).trim());
   } catch (err) {
     console.error('Contact save error:', err);
     return res.status(500).json({ error: 'Could not save your message. Please try again.' });
   }
-  console.log(`[CONTACT] ${name} (${email}): ${subject || 'No subject'} - ${message}`);
+  // Log only the row id — message contents and contact details are PII and
+  // must not end up in plaintext server logs.
+  console.log(`[CONTACT] message #${result.lastInsertRowid} received`);
   res.json({ message: 'Message received. We will get back to you soon.' });
 });
 

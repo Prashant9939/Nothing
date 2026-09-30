@@ -6,6 +6,7 @@ const PDFDocument = require('pdfkit');
 const { authenticateToken } = require('../middleware/auth');
 const { passwordPolicyError } = require('../lib/passwordPolicy');
 const { newReceiptNumber } = require('../lib/docNumbers');
+const sessions = require('../lib/sessions');
 const rzp = require('../lib/razorpay');
 const { completePayment } = require('../lib/payments');
 
@@ -16,6 +17,26 @@ const router = express.Router();
 // "completed".
 const isCourseCompleted = (enrollment) =>
   Number(enrollment.moduleCount) > 0 && Number(enrollment.courseProgress) >= 100;
+
+// Submissions are accepted this long after the attempt window (duration +
+// grace) for network/clock slop; anything later is graded as failed.
+const EXAM_GRACE_MS = 3 * 60 * 1000;
+
+// moduleIndex is a client-supplied 0-based position (moduleOrder - 1). It is
+// used as an array element AND to compute progress, so reject anything that
+// is not a plain non-negative integer inside the track's module count —
+// otherwise a crafted body could push the index to 100% and unlock the exam.
+// Returns { error } on rejection, or { total } (module count) on success.
+async function validateModuleIndex(enrollment, moduleIndex) {
+  if (typeof moduleIndex !== 'number' || !Number.isInteger(moduleIndex) || moduleIndex < 0) {
+    return { error: 'Invalid module index' };
+  }
+  const totalModules = await db.get('SELECT COUNT(*) as count FROM learning_modules WHERE internshipId = ?', enrollment.internshipId);
+  if (moduleIndex >= totalModules.count) {
+    return { error: 'Invalid module index' };
+  }
+  return { total: totalModules.count };
+}
 
 // ===================== STUDENT PROFILE =====================
 router.get('/profile', authenticateToken, async (req, res) => {
@@ -53,6 +74,9 @@ router.put('/change-password', authenticateToken, async (req, res) => {
   const salt = await bcrypt.genSalt(12);
   const hashed = await bcrypt.hash(newPassword, salt);
   await db.run('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', hashed, req.user.id);
+
+  // Revoke every other device's token; keep the current session.
+  await sessions.revokeAll(req.user.id, req.token);
 
   res.json({ message: 'Password changed successfully' });
 });
@@ -132,6 +156,9 @@ router.post('/complete-module/:enrollmentId', authenticateToken, async (req, res
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
 
   const { moduleIndex } = req.body;
+  const check = await validateModuleIndex(enrollment, moduleIndex);
+  if (check.error) return res.status(400).json({ error: check.error });
+
   let completed = [];
   try { completed = JSON.parse(enrollment.completedModules || '[]'); } catch { completed = []; }
 
@@ -139,8 +166,7 @@ router.post('/complete-module/:enrollmentId', authenticateToken, async (req, res
     completed.push(moduleIndex);
   }
 
-  const totalModules = await db.get('SELECT COUNT(*) as count FROM learning_modules WHERE internshipId = ?', enrollment.internshipId);
-  const progress = totalModules.count > 0 ? Math.round((completed.length / totalModules.count) * 100) : 0;
+  const progress = check.total > 0 ? Math.round((completed.length / check.total) * 100) : 0;
 
   await db.run('UPDATE enrollments SET completedModules = ?, progress = ? WHERE id = ?', JSON.stringify(completed), progress, enrollment.id);
 
@@ -157,13 +183,15 @@ router.post('/uncomplete-module/:enrollmentId', authenticateToken, async (req, r
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
 
   const { moduleIndex } = req.body;
+  const check = await validateModuleIndex(enrollment, moduleIndex);
+  if (check.error) return res.status(400).json({ error: check.error });
+
   let completed = [];
   try { completed = JSON.parse(enrollment.completedModules || '[]'); } catch { completed = []; }
 
   completed = completed.filter(i => i !== moduleIndex);
 
-  const totalModules = await db.get('SELECT COUNT(*) as count FROM learning_modules WHERE internshipId = ?', enrollment.internshipId);
-  const progress = totalModules.count > 0 ? Math.round((completed.length / totalModules.count) * 100) : 0;
+  const progress = check.total > 0 ? Math.round((completed.length / check.total) * 100) : 0;
 
   await db.run('UPDATE enrollments SET completedModules = ?, progress = ? WHERE id = ?', JSON.stringify(completed), progress, enrollment.id);
 
@@ -350,6 +378,23 @@ router.post('/exam/:examId/submit', authenticateToken, async (req, res) => {
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
   if (exam.status !== 'in_progress') return res.status(400).json({ error: 'Exam is not in progress' });
 
+  // Server-side time limit — the client timer is cosmetic. The attempt
+  // window runs from the last start (start/resume refresh startedAt) for
+  // `duration` minutes plus a small grace for network/clock slop. Past that
+  // the submission is still graded below, but the result is forced to failed
+  // so the attempt resolves instead of hanging in_progress. Unparseable
+  // legacy startedAt values fail open (normal grading).
+  let expired = false;
+  const startedRaw = exam.startedAt ? String(exam.startedAt).trim() : '';
+  if (startedRaw && Number(exam.duration) > 0) {
+    const iso = startedRaw.replace(' ', 'T');
+    const hasZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso);
+    const startedMs = Date.parse(hasZone ? iso : iso + 'Z');
+    if (!Number.isNaN(startedMs)) {
+      expired = Date.now() - startedMs > Number(exam.duration) * 60000 + EXAM_GRACE_MS;
+    }
+  }
+
   // Fetch correct answers from DB
   const dbQuestions = await db.all('SELECT id, correct FROM questions WHERE track = ? AND isActive = 1', exam.category);
   const correctMap = {};
@@ -369,7 +414,8 @@ router.post('/exam/:examId/submit', authenticateToken, async (req, res) => {
   }
   const total = dbQuestions.length;
   const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
-  const status = percentage >= 40 ? 'completed' : 'failed';
+  let status = percentage >= 40 ? 'completed' : 'failed';
+  if (expired) status = 'failed';
 
   await db.run("UPDATE exams SET status = ?, score = ?, answers = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?", status, percentage, JSON.stringify(answers || []), exam.id);
 
@@ -390,7 +436,10 @@ router.post('/exam/:examId/submit', authenticateToken, async (req, res) => {
   }
 
   const updatedExam = await db.get('SELECT * FROM exams WHERE id = ?', exam.id);
-  res.json({ message: 'Exam submitted', exam: updatedExam, score: percentage, total, correct: score, status });
+  res.json({
+    message: expired ? 'Time limit exceeded. Your attempt was graded as failed.' : 'Exam submitted',
+    exam: updatedExam, score: percentage, total, correct: score, status,
+  });
 });
 
 // ===================== DOWNLOADS (designs live in routes/documents.js) =====================
