@@ -67,13 +67,13 @@ export default function Contact() {
       {/* Contact Methods */}
       <section className="py-20 px-4 bg-gray-50">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
+          <div className="text-center mb-12 reveal reveal-pop">
             <h2 className="text-3xl font-bold mb-4">Multiple Ways to Reach Us</h2>
             <p className="text-gray-600 max-w-2xl mx-auto">Choose the contact method that works best for you. We're committed to responding quickly.</p>
           </div>
           <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-6">
             {contactMethods.map((method, i) => (
-              <div key={i} className="bg-white border border-gray-200 rounded-xl p-6 text-center hover:shadow-lg transition-shadow">
+              <div key={i} className="bg-white border border-gray-200 rounded-xl p-6 text-center hover:shadow-lg transition-shadow reveal reveal-pop" style={{ transitionDelay: `${i * 90}ms` }}>
                 <div className="mb-4 flex justify-center">{method.icon}</div>
                 <h3 className="font-semibold mb-2">{method.title}</h3>
                 <p className="text-gray-500 text-sm mb-3">{method.desc}</p>
@@ -90,7 +90,7 @@ export default function Contact() {
       <section id="contact-form" className="py-20 px-4">
         <div className="max-w-6xl mx-auto grid md:grid-cols-5 gap-10">
           {/* Contact Info */}
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 reveal reveal-pop">
             <h2 className="text-2xl font-bold mb-4">Send Us a Message</h2>
             <p className="text-gray-500 text-sm mb-8">Fill out the form and our team will get back to you within 24 hours. We value your feedback and inquiries.</p>
 
@@ -99,8 +99,8 @@ export default function Contact() {
                 { icon: <Clock className="w-5 h-5" />, title: 'Response Time', desc: 'Within 24 hours on business days' },
                 { icon: <Lock className="w-5 h-5" />, title: 'Privacy Guaranteed', desc: 'Your information is secure with us' },
                 { icon: <Target className="w-5 h-5" />, title: 'Expert Support', desc: 'Get help from trained professionals' },
-              ].map((item) => (
-                <div key={item.title} className="flex gap-4">
+              ].map((item, i) => (
+                <div key={item.title} className="flex gap-4 reveal reveal-pop" style={{ transitionDelay: `${150 + i * 90}ms` }}>
                   <div className="w-11 h-11 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center flex-shrink-0">{item.icon}</div>
                   <div>
                     <h3 className="font-semibold text-sm">{item.title}</h3>
@@ -184,13 +184,13 @@ export default function Contact() {
       {/* FAQ */}
       <section className="py-20 px-4 bg-gray-50">
         <div className="max-w-3xl mx-auto">
-          <div className="text-center mb-12">
+          <div className="text-center mb-12 reveal reveal-pop">
             <h2 className="text-3xl font-bold mb-4">Frequently Asked Questions</h2>
             <p className="text-gray-600">Quick answers to common queries about our platform and programs.</p>
           </div>
           <div className="space-y-3">
             {faqs.map((faq, i) => (
-              <details key={i} className="bg-white border border-gray-200 rounded-lg group">
+              <details key={i} className="bg-white border border-gray-200 rounded-lg group reveal reveal-pop" style={{ transitionDelay: `${i * 90}ms` }}>
                 <summary className="p-4 cursor-pointer font-semibold text-sm hover:bg-gray-50 transition-colors list-none flex justify-between items-center">
                   {faq.q}
                   <span className="text-gray-400 group-open:rotate-45 transition-transform">+</span>
@@ -206,7 +206,7 @@ export default function Contact() {
       <section className="py-20 px-4">
         <div className="max-w-5xl mx-auto bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-white text-center rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.3),0_8px_24px_rgba(0,0,0,0.2)] ring-1 ring-white/10 animate-float relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-transparent to-purple-500/10" />
-          <div className="relative py-16 px-8">
+          <div className="relative py-16 px-8 reveal reveal-pop">
             <h2 className="text-3xl font-bold mb-4">Ready to Get Started?</h2>
             <p className="text-slate-300 mb-8 max-w-2xl mx-auto">Join thousands of students who have accelerated their careers with verified certifications from IQIntern.</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

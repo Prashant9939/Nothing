@@ -190,7 +190,7 @@ export default function Programs() {
       <section className="py-20 px-4">
         <div className="max-w-5xl mx-auto bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-white text-center rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.3),0_8px_24px_rgba(0,0,0,0.2)] ring-1 ring-white/10 animate-float relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-transparent to-purple-500/10" />
-          <div className="relative py-16 px-8">
+          <div className="relative py-16 px-8 reveal reveal-pop">
             <h2 className="text-3xl font-bold mb-4">Can't find what you're looking for?</h2>
             <p className="text-slate-300 mb-8 max-w-2xl mx-auto">Contact our team for custom internship programs tailored to your needs</p>
             <Link to="/contact" className="px-8 py-3 bg-white text-slate-800 font-semibold rounded-lg hover:bg-slate-100 transition-colors">Contact Us</Link>

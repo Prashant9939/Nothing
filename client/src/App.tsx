@@ -7,6 +7,7 @@ import IdleLogout from './components/IdleLogout';
 import ContentProtection from './components/ContentProtection';
 import OfflineGate from './components/OfflineGate';
 import AnalyticsTracker from './components/AnalyticsTracker';
+import RevealOnScroll from './components/RevealOnScroll';
 import { Spinner } from './components/ui';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -65,6 +66,7 @@ function App() {
           <IdleLogout />
           <ContentProtection />
           <AnalyticsTracker />
+          <RevealOnScroll />
           <OfflineGate>
             <Routes>
             {/* Public Routes */}

@@ -15,12 +15,12 @@ export default function FAQ() {
   return (
     <div className="min-h-screen bg-gray-50 py-16 px-4">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6 text-center">Frequently Asked Questions</h1>
-        <p className="text-gray-500 text-center mb-10">Quick answers to common queries about our platform and programs.</p>
+        <h1 className="text-3xl font-bold mb-6 text-center reveal reveal-pop">Frequently Asked Questions</h1>
+        <p className="text-gray-500 text-center mb-10 reveal reveal-pop" style={{ transitionDelay: '120ms' }}>Quick answers to common queries about our platform and programs.</p>
 
         <div className="space-y-3">
           {faqs.map((faq, i) => (
-            <details key={i} className="bg-white border border-gray-200 rounded-lg group">
+            <details key={i} className="bg-white border border-gray-200 rounded-lg group reveal reveal-pop" style={{ transitionDelay: `${200 + i * 70}ms` }}>
               <summary className="p-4 cursor-pointer font-semibold text-sm hover:bg-gray-50 transition-colors list-none flex justify-between items-center">
                 {faq.q}
                 <span className="text-gray-400 group-open:rotate-45 transition-transform">+</span>
