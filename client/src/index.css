@@ -29,6 +29,10 @@
   --animate-fade-in-left: fade-in-left 0.6s ease-out;
   --animate-fade-in: fade-in 0.35s ease-out;
   --animate-page-in: page-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-pop-in: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-qr-glow: qr-glow 3s ease-in-out infinite;
+  --animate-qr-bracket: qr-bracket 2.8s ease-in-out infinite;
+  --animate-qr-sheen: qr-sheen 3.4s ease-in-out infinite;
 }
 
 @keyframes float {
@@ -71,6 +75,69 @@
 @keyframes page-in {
   from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Modals / promo cards: springy scale-up entrance */
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.9) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Banner QR: breathing glow behind the card */
+@keyframes qr-glow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.04); }
+}
+
+/* Banner QR: corner brackets gently breathe (staggered via delays) */
+@keyframes qr-bracket {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.6; }
+}
+
+/* Banner QR: light sheen sweeping across the code, then a pause */
+@keyframes qr-sheen {
+  0%, 14% { transform: translateX(0); }
+  58%, 100% { transform: translateX(264px); }
+}
+
+/* Scroll reveal: hidden until RevealOnScroll adds .animate-in.
+   Must live INSIDE @layer utilities: in Tailwind v4 unlayered rules beat every
+   layered utility regardless of specificity, which would permanently block
+   hovers like .hover:-translate-y-1:hover. Inside the layer, specificity
+   decides — hover (0,2,0) beats .animate-in (0,1,0), while our same-specificity
+   rules still win via source order (they come after Tailwind's generated
+   utilities in this file). Delays come from inline transition-delay. */
+@layer utilities {
+  .reveal {
+    opacity: 0;
+    transition:
+      opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.2s ease,
+      border-color 0.2s ease,
+      background-color 0.2s ease;
+  }
+  .reveal-up { transform: translateY(28px); }
+  .reveal-down { transform: translateY(-30px); }
+  .reveal-left { transform: translateX(-24px); }
+  .reveal-scale { transform: scale(0.95); }
+  .reveal-draw { transform: scaleX(0); transform-origin: left center; }
+  /* Pop-up: springs from slightly smaller/above with a back-out overshoot */
+  .reveal-pop {
+    transform: scale(0.8) translateY(18px);
+    transition:
+      opacity 0.4s ease-out,
+      transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+  /* Completion state — must come AFTER every variant to win at equal
+     specificity; hover utilities still win over it by specificity. */
+  .animate-in {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* Systems with reduced motion enabled: still fade in, but no slide */

@@ -39,6 +39,12 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password, remember);
+      try {
+        const u = JSON.parse(localStorage.getItem('user') || 'null');
+        if (u && u.role !== 'admin') sessionStorage.setItem('iq:channel-banner', '1');
+      } catch {
+        sessionStorage.setItem('iq:channel-banner', '1');
+      }
     } catch (err: any) {
       setError(err.message || err.response?.data?.error || 'Login failed');
     } finally {

@@ -8,6 +8,7 @@ import {
   HouseIcon, RocketIcon, FileTextIcon, BookOpenIcon, ClipboardIcon, UserIcon,
 } from '@animateicons/react/lucide';
 import AnnouncementBell from './AnnouncementBell';
+import ChannelPromoBanner from './ChannelPromoBanner';
 import { ErrorBoundary, PageLoader } from './ui';
 
 const iconMap: Record<string, ReactNode> = {
@@ -172,6 +173,7 @@ export default function StudentLayout() {
 
   return (
     <div className="min-h-screen bg-surface">
+      <ChannelPromoBanner />
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} />
       )}

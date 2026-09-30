@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
-export interface ModalProps {
+interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
@@ -26,14 +26,14 @@ export default function Modal({ open, onClose, title, maxWidth = 'max-w-md', chi
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
       <div
-        className={`w-full ${maxWidth} rounded-2xl bg-white p-6 shadow-lift`}
+        className={`w-full ${maxWidth} animate-pop-in rounded-2xl bg-white p-6 shadow-lift`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-4">

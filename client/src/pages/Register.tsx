@@ -96,6 +96,7 @@ export default function Register() {
       const { confirmPassword: _confirmPassword, fullName, ...rest } = form;
       const nameParts = fullName.trim().split(/\s+/);
       await register({ ...rest, firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') });
+      sessionStorage.setItem('iq:channel-banner', '1');
       setSuccess('Account created successfully!');
     } catch (err: any) {
       setError(err.message || err.response?.data?.error || 'Registration failed');
