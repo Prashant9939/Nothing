@@ -11,7 +11,7 @@ const toneClasses: Record<Tone, string> = {
   amber: 'border-amber-100 bg-amber-50 text-amber-600',
 };
 
-export interface DocCardProps {
+interface DocCardProps {
   icon: ReactNode;
   tone?: Tone;
   title: string;

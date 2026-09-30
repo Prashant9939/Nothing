@@ -3,7 +3,7 @@ export const PASSWORD_MIN_LENGTH = 6;
 export const PASSWORD_RULE_MESSAGE =
   'Password must be at least 6 characters and include an uppercase letter, a lowercase letter, a number and a symbol';
 
-export type PasswordCheckKey = 'length' | 'upper' | 'lower' | 'digit' | 'symbol';
+type PasswordCheckKey = 'length' | 'upper' | 'lower' | 'digit' | 'symbol';
 
 export const PASSWORD_CHECKS: { key: PasswordCheckKey; label: string }[] = [
   { key: 'length', label: 'At least 6 characters' },
@@ -23,7 +23,7 @@ export function passwordChecks(value: string): Record<PasswordCheckKey, boolean>
   };
 }
 
-export function passwordIsValid(value: string): boolean {
+function passwordIsValid(value: string): boolean {
   return Object.values(passwordChecks(value)).every(Boolean);
 }
 

@@ -127,7 +127,7 @@ export interface Certificate {
   email?: string;
 }
 
-export interface AuthResponse {
+interface AuthResponse {
   message: string;
   token: string;
   user: User;
@@ -149,7 +149,7 @@ export interface LearningModule {
   videoUrl?: string;
 }
 
-export interface ContentSection {
+interface ContentSection {
   id: string;
   type: 'text' | 'code' | 'video' | 'diagram';
   title: string;
@@ -173,7 +173,7 @@ export interface Resource {
   url: string;
 }
 
-export interface LearningProgress {
+interface LearningProgress {
   totalModules: number;
   completedCount: number;
   percentage: number;
@@ -315,7 +315,7 @@ export interface ContactMessage {
   createdAt: string;
 }
 
-export interface AnalyticsSummary {
+interface AnalyticsSummary {
   visitors: number;
   clicks: number;
   pageviews: number;
@@ -337,7 +337,7 @@ export interface AnalyticsBucket {
   revenue: number;
 }
 
-export interface TopPage {
+interface TopPage {
   path: string;
   views: number;
   clicks: number;

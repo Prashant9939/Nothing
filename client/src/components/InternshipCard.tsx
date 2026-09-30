@@ -1,10 +1,10 @@
-﻿import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Award, BookOpen, CalendarDays, Check, Clock } from 'lucide-react';
 import type { Internship } from '../api';
 import { categoryIcons, categoryImage, categoryLabels, titleCase } from '../categories';
 
-const formatMoney = (value: number) => `₹${Number(value).toLocaleString('en-IN')}`;
+const formatMoney = (value: number) => `?${Number(value).toLocaleString('en-IN')}`;
 
 const formatDate = (value: string) => {
   const d = /^\d{4}-\d{2}-\d{2}/.test(value) ? new Date(value.slice(0, 10)) : new Date(value);
@@ -12,7 +12,7 @@ const formatDate = (value: string) => {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-export interface InternshipCardProps {
+interface InternshipCardProps {
   internship: Internship;
   /** `public` renders an Enroll CTA (marketing pages); `select` renders a clickable selection card (student area). */
   variant?: 'public' | 'select';

@@ -43,26 +43,4 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-const optionalAuth = async (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return next();
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await loadUser(decoded.id);
-    if (user && (await sessions.isActive(token))) {
-      req.user = user;
-      req.token = token;
-    }
-  } catch (_) {
-    // Token invalid or revoked, continue without auth
-  }
-
-  next();
-};
-
-module.exports = { authenticateToken, optionalAuth };
+module.exports = { authenticateToken };

@@ -17,7 +17,7 @@ const sizes: Record<Size, string> = {
   lg: 'px-7 py-3 text-sm rounded-xl',
 };
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
   loading?: boolean;

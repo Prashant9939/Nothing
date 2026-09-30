@@ -23,3 +23,5 @@ Thumbs.db
 
 # Vercel project link (created by vercel link / CLI)
 .vercel/
+
+.vercel

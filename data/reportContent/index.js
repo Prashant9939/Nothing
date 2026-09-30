@@ -129,4 +129,4 @@ function getReportContent(category, internship) {
   return buildGenericContent(internship);
 }
 
-module.exports = { getReportContent, buildGenericContent };
+module.exports = { getReportContent };

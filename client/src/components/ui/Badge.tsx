@@ -10,7 +10,7 @@ const tones: Record<Tone, string> = {
   info: 'bg-blue-50 text-blue-700 border-blue-100',
 };
 
-export interface BadgeProps {
+interface BadgeProps {
   tone?: Tone;
   className?: string;
   children: ReactNode;

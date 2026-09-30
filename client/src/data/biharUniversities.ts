@@ -394,8 +394,3 @@ export const biharUniversities: University[] = [
     colleges: [],
   },
 ];
-
-export function getCollegesByUniversity(universityName: string): College[] {
-  const uni = biharUniversities.find(u => u.name === universityName);
-  return uni?.colleges ?? [];
-}
