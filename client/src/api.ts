@@ -82,6 +82,7 @@ export interface Payment {
   status: string;
   receiptNumber: string;
   paidAt: string;
+  expiresAt?: string | null;
   createdAt: string;
   internshipTitle?: string;
   firstName?: string;

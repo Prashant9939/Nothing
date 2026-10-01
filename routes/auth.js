@@ -363,7 +363,8 @@ router.post('/verify-certificate', async (req, res) => {
   const ref = (req.body.certificateId || '').trim().toUpperCase();
   if (!ref) return res.status(400).json({ error: 'Certificate ID is required' });
 
-  // 1) Certificate
+  // 1) Certificate — only valid while its enrollment is actually paid for;
+  // a refunded payment must not leave a publicly verifiable certificate.
   const cert = await db.get(`
     SELECT c.certificateId, c.grade, c.score, c.issuedAt,
            u.firstName, u.lastName, u.college, u.course,
@@ -373,6 +374,9 @@ router.post('/verify-certificate', async (req, res) => {
     JOIN enrollments e ON c.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
     WHERE UPPER(c.certificateId) = ?
+      AND EXISTS (
+        SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed'
+      )
   `, ref);
 
   if (cert) {
@@ -402,7 +406,7 @@ router.post('/verify-certificate', async (req, res) => {
     JOIN users u ON p.userId = u.id
     JOIN enrollments e ON p.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
-    WHERE UPPER(p.receiptNumber) = ?
+    WHERE UPPER(p.receiptNumber) = ? AND p.status = 'completed'
   `, ref);
 
   if (receipt) {
@@ -435,10 +439,12 @@ router.post('/verify-certificate', async (req, res) => {
     // DOC_COLUMNS maps column -> prefix (offerNo -> 'OL'); invert it for the regex capture.
     const column = Object.keys(DOC_COLUMNS).find((key) => DOC_COLUMNS[key] === m[1]);
     // Rows store the full reference (IQI-OL-2026-483920). Older rows may hold
-    // only the bare serial (2026-483920), so accept both.
+    // only the bare serial (2026-483920), so accept both. Documents only
+    // verify while the enrollment is paid for — refunded ⇒ invalid.
+    const paidClause = `AND EXISTS (SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed')`;
     const condition = newStyle
-      ? { clause: `WHERE e.${column} IN (?, ?)`, params: [ref, `${m[2]}-${m[3]}`] }
-      : { clause: 'WHERE e.id = ?', params: [m[2]] };
+      ? { clause: `WHERE e.${column} IN (?, ?) ${paidClause}`, params: [ref, `${m[2]}-${m[3]}`] }
+      : { clause: `WHERE e.id = ? ${paidClause}`, params: [m[2]] };
     const row = await db.get(`
       SELECT e.id, e.enrolledAt, u.firstName, u.lastName, u.college, u.course,
              i.title as internshipTitle, i.duration,

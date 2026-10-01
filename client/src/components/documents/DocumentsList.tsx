@@ -87,7 +87,7 @@ export default function DocumentsList() {
     const s = state(e.id);
     return acc + (s.isPaid ? 2 : 0) + (s.isPassed ? 2 : 0) + (s.cert ? 1 : 0);
   }, 0);
-  const pendingPayments = payments.filter((p) => p.status !== 'completed').length;
+  const pendingPayments = payments.filter((p) => p.status === 'pending').length;
   const inProgress = enrollments.filter((e) => e.status === 'active').length;
 
   const header = <h1 className="sr-only">Documents</h1>;
@@ -111,7 +111,9 @@ export default function DocumentsList() {
 
   if (enrollments.length === 0) {
     if (hiddenCount > 0) {
-      const pending = payments.find((p) => p.status !== 'completed');
+      // Only an actually-payable (pending) invoice can be linked straight to
+      // checkout; failed/expired ones must go through track selection again.
+      const pending = payments.find((p) => p.status === 'pending');
       return (
         <div className="space-y-6">
           {header}

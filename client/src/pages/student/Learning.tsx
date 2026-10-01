@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, ArrowRight, Award, BookOpen, Check, CheckCircle, Clock, FileText, PartyPopper, Rocket } from 'lucide-react';
 import { studentApi } from '../../api';
-import type { Enrollment, Exam, LearningModule } from '../../api';
+import type { Enrollment, Exam, LearningModule, Payment } from '../../api';
 import { usePopup } from '../../context/PopupContext';
 import { PageHeader, PageLoader, EmptyState, Button } from '../../components/ui';
 import CircularProgress from '../../components/learning/CircularProgress';
@@ -34,7 +34,14 @@ export default function Learning() {
     setLoading(true);
     setLoadError(false);
     studentApi.getDashboard().then((res) => {
-      const all = res.data.enrollments.filter((e: Enrollment) => e.status === 'active' || e.status === 'completed');
+      // Only tracks whose payment completed — a pending/failed/refunded
+      // payment must never expose its learning modules.
+      const paidIds = new Set(
+        (res.data.payments || []).filter((p: Payment) => p.status === 'completed').map((p: Payment) => p.enrollmentId)
+      );
+      const all = res.data.enrollments.filter(
+        (e: Enrollment) => (e.status === 'active' || e.status === 'completed') && paidIds.has(e.id)
+      );
       setEnrollments(all);
       setExams(res.data.exams || []);
       const first = all.find((e: Enrollment) => e.progress < 100) || all[0];

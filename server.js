@@ -12,6 +12,7 @@ const rateLimit = require('express-rate-limit');
 
 const db = require('./db');
 const { refreshBrand } = require('./lib/documentBrand');
+const { expirePendingPayments } = require('./lib/payments');
 
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
@@ -170,6 +171,16 @@ app.use((err, req, res, next) => {
   if (process.env.NODE_ENV !== 'production') body.details = err.message;
   res.status(500).json(body);
 });
+
+// Expired pending payments are also failed lazily whenever they are read;
+// this timer keeps things prompt even when nobody hits those routes. Skipped
+// on Vercel, where the instance can freeze between requests — there the
+// lazy checks (plus the sweep at db init) are enough.
+if (!process.env.VERCEL) {
+  setInterval(() => {
+    expirePendingPayments().catch((err) => console.error('Payment expiry sweep failed:', err.message));
+  }, 60 * 1000).unref();
+}
 
 // Locally: start listening only once the database and brand are ready.
 // On Vercel (see api/index.js) the app is exported instead, no port is

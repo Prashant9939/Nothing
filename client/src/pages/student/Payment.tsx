@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { AlertTriangle, Check, CheckCircle2, CreditCard, Landmark, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Clock, CreditCard, Landmark, ShieldCheck } from 'lucide-react';
 import { studentApi } from '../../api';
 import { useAuth } from '../../context/AuthContext';
 import { usePopup } from '../../context/PopupContext';
@@ -20,6 +20,13 @@ function loadRazorpayCheckout(): Promise<void> {
   });
 }
 
+// payments.expiresAt is stored as UTC 'YYYY-MM-DD HH24:MI:SS' (no zone)
+function parseUtc(value?: string | null): number {
+  if (!value) return NaN;
+  const s = String(value).trim().replace(' ', 'T');
+  return Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z');
+}
+
 export default function Payment() {
   const { paymentId } = useParams();
   const navigate = useNavigate();
@@ -31,6 +38,7 @@ export default function Payment() {
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [countdown, setCountdown] = useState(5);
+  const [now, setNow] = useState(() => Date.now());
 
   const load = () => {
     setLoading(true);
@@ -46,6 +54,18 @@ export default function Payment() {
   };
 
   useEffect(() => { load(); }, [paymentId]);
+
+  // Tick once a second while an unpaid invoice is open so the countdown stays
+  // live; the server enforces the same deadline independently.
+  useEffect(() => {
+    if (!payment || payment.status !== 'pending' || success) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [payment, success]);
+
+  const expiresMs = parseUtc(payment?.expiresAt);
+  const timeLeft = Number.isNaN(expiresMs) ? null : Math.max(0, Math.floor((expiresMs - now) / 1000));
+  const expired = !!payment && (payment.status === 'failed' || (payment.status === 'pending' && timeLeft !== null && timeLeft <= 0));
 
   useEffect(() => {
     if (success && countdown > 0) { const timer = setTimeout(() => setCountdown(countdown - 1), 1000); return () => clearTimeout(timer); }
@@ -107,6 +127,10 @@ export default function Payment() {
     } catch (err: any) {
       popup.error(err.response?.data?.error || err.message || 'Payment failed. Please try again.', 'Payment Failed');
       setProcessing(false);
+      // 410 = the invoice's time limit ran out server-side; 409 = the payment
+      // was already completed/refunded (e.g. healed from the order route).
+      // Reload so the page swaps its Pay button for the right end state.
+      if (err.response?.status === 410 || err.response?.status === 409) load();
     }
   };
 
@@ -160,6 +184,55 @@ export default function Payment() {
     );
   }
 
+  if (payment && payment.status === 'completed') {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-10 text-center shadow-soft">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100">
+            <CheckCircle2 size={40} className="text-emerald-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Payment Completed</h1>
+          <p className="text-slate-500 mb-6">This payment has already been processed successfully.</p>
+          <div className="mb-6 rounded-xl border border-slate-100 bg-slate-50 p-5 text-left">
+            <div className="mb-3 flex justify-between items-center"><span className="text-sm text-slate-500">Amount Paid</span><span className="text-lg font-bold text-emerald-600">₹{payment.amount.toLocaleString()}</span></div>
+            <div className="flex justify-between items-center"><span className="text-sm text-slate-500">Receipt No.</span><span className="font-mono text-sm text-slate-900">{payment.receiptNumber}</span></div>
+          </div>
+          <Button className="w-full" onClick={() => navigate('/student/learning')}>Go to Learning</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (payment && payment.status === 'refunded') {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4">
+        <EmptyState
+          icon={<Landmark size={22} />}
+          title="Payment Refunded"
+          description="This payment has been refunded, so the access it granted has been revoked. Select the track again if you would like to re-enroll."
+          action={
+            <Link to="/student/select-track" className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800">Select a Track</Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  if (payment && expired) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4">
+        <EmptyState
+          icon={<Clock size={22} />}
+          title="Payment Time Limit Expired"
+          description="This payment was not completed within the time limit, so it has been marked unsuccessful. No certificate or documents are available for it. Select the track again to start a new payment."
+          action={
+            <Link to="/student/select-track" className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800">Select a Track Again</Link>
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
@@ -191,6 +264,17 @@ export default function Payment() {
                 </span>
               </div>
             </div>
+
+            {timeLeft !== null && (
+              <p className="mb-4 flex items-center justify-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                <Clock size={13} className="shrink-0" />
+                Complete payment within{' '}
+                <span className="font-mono font-semibold">
+                  {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+                </span>
+                {' '}or this payment expires
+              </p>
+            )}
 
             <Button className="w-full" loading={processing} onClick={handlePay} icon={!processing ? <ShieldCheck size={15} /> : undefined}>
               {processing ? 'Processing...' : `Pay ₹${payment.amount.toLocaleString()}`}

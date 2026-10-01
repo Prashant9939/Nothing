@@ -1,14 +1,24 @@
 import { useEffect, useState } from 'react';
 import { adminApi } from '../../api';
+import { usePopup } from '../../context/PopupContext';
 import type { Payment } from '../../api';
 
 export default function AdminPayments() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const popup = usePopup();
 
   useEffect(() => { adminApi.getPayments().then((res) => { setPayments(res.data.payments); setLoading(false); }).catch(() => setLoading(false)); }, []);
 
-  const updateStatus = async (id: number, status: string) => { await adminApi.updatePaymentStatus(id, status); setPayments(payments.map(p => p.id === id ? { ...p, status } : p)); };
+  const updateStatus = async (id: number, status: string) => {
+    try {
+      await adminApi.updatePaymentStatus(id, status);
+      setPayments(payments.map(p => p.id === id ? { ...p, status } : p));
+      popup.success(`Payment marked as ${status}.`, 'Status Updated');
+    } catch (err: any) {
+      popup.error(err.response?.data?.error || 'Could not update the payment status. Please try again.', 'Update Failed');
+    }
+  };
 
   if (loading) return <div className="flex items-center justify-center h-[60vh]"><div className="w-8 h-8 border-2 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>;
 
@@ -47,6 +57,7 @@ export default function AdminPayments() {
                         <button onClick={() => updateStatus(p.id, 'completed')} className="text-emerald-600 hover:text-emerald-700 text-xs font-medium">Approve</button>
                         <button onClick={() => updateStatus(p.id, 'failed')} className="text-red-500 hover:text-red-600 text-xs font-medium">Reject</button>
                       </>)}
+                      {p.status === 'failed' && (<button onClick={() => updateStatus(p.id, 'completed')} className="text-emerald-600 hover:text-emerald-700 text-xs font-medium">Approve</button>)}
                       {p.status === 'completed' && (<button onClick={() => updateStatus(p.id, 'refunded')} className="text-slate-800 hover:text-slate-900 text-xs font-medium">Refund</button>)}
                     </div>
                   </td>

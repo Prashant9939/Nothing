@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
-const { completePayment } = require('../lib/payments');
+const { completePayment, expirePendingPayments } = require('../lib/payments');
 const { refreshBrand } = require('../lib/documentBrand');
 const { streamAnswerKey } = require('../lib/answerKeyPdf');
 const { passwordPolicyError } = require('../lib/passwordPolicy');
@@ -406,6 +406,10 @@ router.put('/settings', authenticateToken, adminOnly, async (req, res) => {
 
 // ===================== PAYMENTS MANAGEMENT =====================
 router.get('/payments', authenticateToken, adminOnly, async (req, res) => {
+  // Fail expired pending invoices before listing so the admin never sees
+  // (or approves) a payment whose time limit already ran out.
+  await expirePendingPayments().catch((err) => console.error('Payment expiry sweep failed:', err.message));
+
   const payments = await db.all(`
     SELECT p.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
     FROM payments p
@@ -430,7 +434,36 @@ router.put('/payments/:id/status', authenticateToken, adminOnly, async (req, res
     // creates/activates the enrollment and opens the exam — one transaction
     await completePayment(payment, { transactionId: transactionId || null });
   } else {
-    await db.run('UPDATE payments SET status = ?, transactionId = COALESCE(?, transactionId), paidAt = CASE WHEN ? = "completed" THEN CURRENT_TIMESTAMP ELSE paidAt END WHERE id = ?', status, transactionId, status, req.params.id);
+    // paidAt is a TEXT column storing the same 'YYYY-MM-DD HH24:MI:SS' format
+    // as createdAt — CURRENT_TIMESTAMP (timestamptz) cannot be used directly
+    // as a CASE branch here (type mismatch), and it must not be reset when an
+    // already-completed payment row is re-saved. Payment update and enrollment
+    // revoke commit together (or not at all) so a failed cascade can't leave
+    // a refunded payment with an active enrollment.
+    await db.tx(async () => {
+      await db.run(`
+        UPDATE payments
+        SET status = ?,
+            transactionId = COALESCE(?, transactionId),
+            paidAt = CASE WHEN ? = 'completed' AND paidAt IS NULL
+                          THEN to_char(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS')
+                          ELSE paidAt END
+        WHERE id = ?
+      `, status, transactionId, status, req.params.id);
+
+      // A refund revokes the enrollment — unless another completed payment still
+      // covers it (e.g. a duplicate invoice the admin is only partly refunding).
+      if (status === 'refunded' && payment.enrollmentId) {
+        await db.run(`
+          UPDATE enrollments
+          SET status = 'refunded'
+          WHERE id = ?
+            AND NOT EXISTS (
+              SELECT 1 FROM payments WHERE enrollmentId = ? AND status = 'completed'
+            )
+        `, payment.enrollmentId, payment.enrollmentId);
+      }
+    });
   }
   res.json({ message: 'Payment status updated' });
 });
@@ -463,11 +496,14 @@ const loadExamForAdmin = async (id) => await db.get(`
 
 const gradeFor = (score) => score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 60 ? 'B' : score >= 50 ? 'C' : 'D';
 
-// Keeps certificate + enrollment consistent with an exam result
+// Keeps certificate + enrollment consistent with an exam result. A
+// certificate is only ever issued when the enrollment's payment completed —
+// unsuccessful payments must not produce certificates.
 const applyResult = async (exam, score, status) => {
   const existingCert = await db.get('SELECT id FROM certificates WHERE enrollmentId = ?', exam.enrollmentId);
+  const paid = !!(await db.get("SELECT 1 FROM payments WHERE enrollmentId = ? AND status = 'completed' LIMIT 1", exam.enrollmentId));
 
-  if (status === 'completed') {
+  if (status === 'completed' && paid) {
     if (!existingCert) {
       let certId;
       let isUnique = false;

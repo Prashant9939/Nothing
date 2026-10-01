@@ -8,7 +8,7 @@ const { passwordPolicyError } = require('../lib/passwordPolicy');
 const { newReceiptNumber } = require('../lib/docNumbers');
 const sessions = require('../lib/sessions');
 const rzp = require('../lib/razorpay');
-const { completePayment } = require('../lib/payments');
+const { completePayment, paymentTimeLimitMinutes, expirePendingPayments, expireIfDue } = require('../lib/payments');
 
 const router = express.Router();
 
@@ -36,6 +36,29 @@ async function validateModuleIndex(enrollment, moduleIndex) {
     return { error: 'Invalid module index' };
   }
   return { total: totalModules.count };
+}
+
+// Lazy deadline sweep: fail expired pending invoices before they are read so
+// the rows served to the client are always fresh (non-fatal if it errors).
+const sweepPayments = () => expirePendingPayments().catch((err) => console.error('Payment expiry sweep failed:', err.message));
+
+const PAYMENT_REQUIRED_MSG = 'Complete the payment for this internship to unlock learning modules.';
+
+// Learning content is only for tracks whose payment succeeded: the enrollment
+// row alone is not enough, the completed payment is re-checked so a failed or
+// refunded invoice revokes access immediately.
+async function paidEnrollmentFor(userId, internshipId) {
+  return await db.get(`
+    SELECT e.id FROM enrollments e
+    WHERE e.userId = ? AND e.internshipId = ?
+      AND e.status IN ('active', 'completed')
+      AND EXISTS (SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed')
+    LIMIT 1
+  `, userId, internshipId);
+}
+
+async function hasCompletedPayment(enrollmentId, userId) {
+  return !!(await db.get("SELECT 1 FROM payments WHERE enrollmentId = ? AND userId = ? AND status = 'completed' LIMIT 1", enrollmentId, userId));
 }
 
 // ===================== STUDENT PROFILE =====================
@@ -83,6 +106,8 @@ router.put('/change-password', authenticateToken, async (req, res) => {
 
 // ===================== STUDENT DASHBOARD =====================
 router.get('/dashboard', authenticateToken, async (req, res) => {
+  await sweepPayments();
+
   const enrollments = await db.all(`
     SELECT e.*, i.title as internshipTitle, i.category, i.duration, i.modules, i.topics
     FROM enrollments e
@@ -115,6 +140,9 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
     JOIN enrollments e ON c.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
     WHERE c.userId = ?
+      AND EXISTS (
+        SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed'
+      )
   `, req.user.id);
 
   res.json({ enrollments, payments, exams, certificates });
@@ -154,6 +182,9 @@ router.post('/complete-module/:enrollmentId', authenticateToken, async (req, res
   `, req.params.enrollmentId, req.user.id);
 
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasCompletedPayment(enrollment.id, req.user.id))) {
+    return res.status(403).json({ error: PAYMENT_REQUIRED_MSG });
+  }
 
   const { moduleIndex } = req.body;
   const check = await validateModuleIndex(enrollment, moduleIndex);
@@ -181,6 +212,9 @@ router.post('/uncomplete-module/:enrollmentId', authenticateToken, async (req, r
   `, req.params.enrollmentId, req.user.id);
 
   if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasCompletedPayment(enrollment.id, req.user.id))) {
+    return res.status(403).json({ error: PAYMENT_REQUIRED_MSG });
+  }
 
   const { moduleIndex } = req.body;
   const check = await validateModuleIndex(enrollment, moduleIndex);
@@ -202,8 +236,17 @@ router.post('/uncomplete-module/:enrollmentId', authenticateToken, async (req, r
 router.get('/internships', authenticateToken, async (req, res) => {
   const internships = await db.all('SELECT * FROM internships WHERE isActive = 1 ORDER BY createdAt DESC');
 
-  // Check which ones user is enrolled in
-  const enrolled = await db.all('SELECT internshipId FROM enrollments WHERE userId = ?', req.user.id);
+  // Check which tracks are actually paid for: a refunded payment leaves the
+  // enrollment row behind (for history/repurchase) but must not read as
+  // "enrolled" anywhere, or the student can never buy the track again.
+  const enrolled = await db.all(`
+    SELECT DISTINCT e.internshipId
+    FROM enrollments e
+    WHERE e.userId = ?
+      AND EXISTS (
+        SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed'
+      )
+  `, req.user.id);
   const enrolledIds = enrolled.map(e => e.internshipId);
 
   const internshipsWithStatus = internships.map(i => ({
@@ -218,7 +261,9 @@ router.get('/internships', authenticateToken, async (req, res) => {
 // Stores ONLY an unpaid invoice (pending payment) for the checkout. The
 // enrollment row is created later by lib/payments.js — strictly after the
 // payment is verified successful — so a pending payment can never surface
-// anywhere as "already enrolled".
+// anywhere as "already enrolled". The invoice carries a deadline (expiresAt);
+// once it passes the payment is marked 'failed' and a fresh invoice must be
+// created.
 router.post('/enroll', authenticateToken, async (req, res) => {
   const { internshipId } = req.body;
   if (!internshipId) return res.status(400).json({ error: 'Internship ID required' });
@@ -226,21 +271,49 @@ router.post('/enroll', authenticateToken, async (req, res) => {
   const internship = await db.get('SELECT * FROM internships WHERE id = ?', internshipId);
   if (!internship) return res.status(404).json({ error: 'Internship not found' });
 
-  const existing = await db.get('SELECT * FROM enrollments WHERE userId = ? AND internshipId = ?', req.user.id, internshipId);
-  if (existing) return res.status(409).json({ error: 'Already enrolled in this internship' });
+  // Genuinely enrolled = a completed payment exists. Refunded/failed history
+  // (and its leftover enrollment row) must NOT block a fresh purchase.
+  const alreadyPaid = await db.get(
+    "SELECT 1 FROM payments WHERE userId = ? AND internshipId = ? AND status = 'completed' LIMIT 1",
+    req.user.id, internshipId,
+  );
+  if (alreadyPaid) return res.status(409).json({ error: 'Already enrolled in this internship' });
 
   // Reuse an unpaid invoice for this track instead of stacking duplicates —
-  // and re-price it, since it still hasn't been paid and the price may have changed
-  const pending = await db.get("SELECT * FROM payments WHERE userId = ? AND internshipId = ? AND status = 'pending' ORDER BY id DESC", req.user.id, internshipId);
-  if (pending) {
-    if (pending.amount !== internship.price) {
+  // unless its time limit already ran out, in which case it is failed and a
+  // new invoice is issued below. Re-price reused invoices only while no order
+  // exists yet: once a Razorpay order is open the amount must stay in lockstep
+  // with that order (completion additionally reconciles the recorded amount to
+  // the charged order amount).
+  const pending = await expireIfDue(await db.get("SELECT * FROM payments WHERE userId = ? AND internshipId = ? AND status = 'pending' ORDER BY id DESC", req.user.id, internshipId));
+  if (pending && pending.status === 'pending') {
+    if (pending.amount !== internship.price && !pending.razorpayOrderId) {
       await db.run('UPDATE payments SET amount = ? WHERE id = ?', internship.price, pending.id);
       pending.amount = internship.price;
     }
     return res.json({ message: 'Payment pending for this internship.', payment: pending });
   }
 
-  const paymentResult = await db.run('INSERT INTO payments (userId, enrollmentId, internshipId, amount, receiptNumber, status) VALUES (?, NULL, ?, ?, ?, ?)', req.user.id, internshipId, internship.price, await newReceiptNumber(db), 'pending');
+  const receiptNumber = await newReceiptNumber(db);
+  const insertInvoice = () => db.run(`
+    INSERT INTO payments (userId, enrollmentId, internshipId, amount, receiptNumber, status, expiresAt)
+    VALUES (?, NULL, ?, ?, ?, ?, to_char(now() at time zone 'UTC' + (? || ' minutes')::interval, 'YYYY-MM-DD HH24:MI:SS'))
+  `, req.user.id, internshipId, internship.price, receiptNumber, 'pending', String(paymentTimeLimitMinutes()));
+
+  let paymentResult;
+  try {
+    paymentResult = await insertInvoice();
+  } catch (err) {
+    // A concurrent request for the same track won the race and created the
+    // invoice (uniq_payments_pending_user_track) — return that one.
+    if (String(err.message).includes('duplicate key')) {
+      const raced = await expireIfDue(await db.get("SELECT * FROM payments WHERE userId = ? AND internshipId = ? AND status = 'pending' ORDER BY id DESC", req.user.id, internshipId));
+      if (raced && raced.status === 'pending') {
+        return res.json({ message: 'Payment pending for this internship.', payment: raced });
+      }
+    }
+    throw err;
+  }
 
   const payment = await db.get('SELECT * FROM payments WHERE id = ?', paymentResult.lastInsertRowid);
   res.status(201).json({ message: 'Payment pending. Complete the payment to enroll.', payment });
@@ -249,27 +322,87 @@ router.post('/enroll', authenticateToken, async (req, res) => {
 // Create a Razorpay order for this payment. The amount always comes from the
 // database — the client can never submit its own price.
 router.post('/pay/:paymentId/order', authenticateToken, async (req, res) => {
-  const payment = await db.get('SELECT * FROM payments WHERE id = ? AND userId = ?', req.params.paymentId, req.user.id);
+  const payment = await expireIfDue(await db.get('SELECT * FROM payments WHERE id = ? AND userId = ?', req.params.paymentId, req.user.id));
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.status === 'completed') return res.status(409).json({ error: 'Payment already completed' });
+  if (payment.status === 'refunded') return res.status(409).json({ error: 'This payment has been refunded' });
+  if (payment.status !== 'pending') {
+    return res.status(410).json({
+      error: 'The time limit for this payment has expired, so it was marked unsuccessful. Select the track again to start a new payment.',
+    });
+  }
 
   const amountPaise = Math.round(payment.amount * 100);
+  const orderResponse = (order) => ({
+    demo: false,
+    orderId: order.id,
+    amount: order.amount,
+    currency: order.currency,
+    keyId: process.env.RAZORPAY_KEY_ID,
+  });
 
   if (rzp.isLive()) {
+    // REUSE the order already stored on this invoice. Creating a second order
+    // would overwrite razorpayOrderId and orphan the first: a charge on the
+    // orphan can never be matched back (verify rejects it, the webhook lookup
+    // misses it and still answers 200, so Razorpay never retries) — the
+    // customer pays and nothing completes.
+    if (payment.razorpayOrderId) {
+      try {
+        const existingOrder = await rzp.fetchOrder(payment.razorpayOrderId);
+        if (existingOrder.status === 'paid') {
+          // Money captured but the row is still pending (both verify and the
+          // webhook missed it). Complete straight from the authoritative API
+          // response; 409 makes the client reload into the completed state.
+          const captured = (await rzp.fetchPaymentsForOrder(existingOrder.id))
+            .find((p) => p.status === 'captured');
+          if (captured) {
+            await completePayment(payment, {
+              transactionId: captured.id,
+              razorpayOrderId: existingOrder.id,
+              razorpayPaymentId: captured.id,
+              amount: Number(captured.amount) / 100,
+            });
+          }
+          return res.status(409).json({ error: 'This order has already been paid. Refresh the page to see the updated status.' });
+        }
+        // Order still open (created/attempted) — hand it back to the client.
+        return res.json(orderResponse(existingOrder));
+      } catch (err) {
+        // Stale/foreign order id (e.g. deleted in the Razorpay dashboard) —
+        // drop it and fall through to a fresh order.
+        console.error('Razorpay order reuse failed:', err.message);
+        payment.razorpayOrderId = null;
+      }
+    }
+
     try {
       const order = await rzp.createOrder({
         amountPaise,
         receipt: payment.receiptNumber,
         notes: { paymentId: String(payment.id), enrollmentId: String(payment.enrollmentId) },
       });
-      await db.run("UPDATE payments SET razorpayOrderId = ?, method = 'razorpay' WHERE id = ?", order.id, payment.id);
-      return res.json({
-        demo: false,
-        orderId: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        keyId: process.env.RAZORPAY_KEY_ID,
-      });
+      // Bind atomically: a concurrent request may have stored its order first.
+      // Whoever wins, BOTH tabs get the same winning order — never an orphan.
+      const claim = await db.run(
+        'UPDATE payments SET razorpayOrderId = ?, method = ? WHERE id = ? AND razorpayOrderId IS NULL',
+        order.id, 'razorpay', payment.id,
+      );
+      if (claim.changes === 0) {
+        const fresh = await db.get('SELECT razorpayOrderId FROM payments WHERE id = ?', payment.id);
+        if (fresh && fresh.razorpayOrderId) {
+          try {
+            return res.json(orderResponse(await rzp.fetchOrder(fresh.razorpayOrderId)));
+          } catch (err) {
+            console.error('Razorpay order fetch after claim race failed:', err.message);
+            return res.status(502).json({ error: 'Could not start the payment. Please try again shortly.' });
+          }
+        }
+        // The winning id was cleared again (concurrent re-price) — ask the
+        // client to retry rather than return an unbound order.
+        return res.status(502).json({ error: 'Could not start the payment. Please try again shortly.' });
+      }
+      return res.json(orderResponse(order));
     } catch (err) {
       console.error('Razorpay order creation failed:', err.message);
       return res.status(502).json({ error: 'Could not start the payment. Please try again shortly.' });
@@ -293,6 +426,7 @@ router.post('/pay/:paymentId/verify', authenticateToken, async (req, res) => {
   const payment = await db.get('SELECT * FROM payments WHERE id = ? AND userId = ?', req.params.paymentId, req.user.id);
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.status === 'completed') return res.json({ message: 'Payment already completed', payment });
+  if (payment.status === 'refunded') return res.status(409).json({ error: 'This payment has been refunded' });
 
   // The signature is only honoured for the order this payment was bound to
   if (!payment.razorpayOrderId || payment.razorpayOrderId !== razorpay_order_id) {
@@ -304,10 +438,24 @@ router.post('/pay/:paymentId/verify', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'Payment verification failed' });
   }
 
+  // A valid signature means the charge was actually captured, so it is
+  // honoured even if the invoice deadline passed while the checkout was open
+  // (the row may already read 'failed'). Nothing unpaid ever reaches here.
+  // The recorded amount is reconciled to the charged order amount in case the
+  // invoice amount drifted after the order was created.
+  let chargedAmount = null;
+  try {
+    const order = await rzp.fetchOrder(razorpay_order_id);
+    if (order && Number(order.amount) > 0) chargedAmount = Number(order.amount) / 100;
+  } catch (err) {
+    console.error('Could not fetch order amount for reconciliation:', err.message);
+  }
+
   const updated = await completePayment(payment, {
     transactionId: razorpay_payment_id,
     razorpayOrderId: razorpay_order_id,
     razorpayPaymentId: razorpay_payment_id,
+    amount: chargedAmount,
   });
   res.json({ message: 'Payment successful', payment: updated });
 });
@@ -338,6 +486,11 @@ router.post('/exam/:examId/start', authenticateToken, async (req, res) => {
     WHERE e.id = ? AND e.userId = ?
   `, req.params.examId, req.user.id);
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
+  // Access follows the money: a refunded/revoked enrollment must not be able
+  // to start (or resume) an attempt.
+  if (!(await hasCompletedPayment(exam.enrollmentId, req.user.id))) {
+    return res.status(403).json({ error: PAYMENT_REQUIRED_MSG });
+  }
   if (exam.status === 'completed' || exam.status === 'failed') {
     return res.status(400).json({ error: 'Exam already completed. Check your result on the dashboard.' });
   }
@@ -363,7 +516,13 @@ router.post('/exam/:examId/start', authenticateToken, async (req, res) => {
     options: [q.optionA, q.optionB, q.optionC, q.optionD],
   }));
 
-  await db.run("UPDATE exams SET status = 'in_progress', startedAt = CURRENT_TIMESTAMP WHERE id = ?", exam.id);
+  // Persist exactly which questions this attempt served — grading at submit
+  // time uses this list, so the score can never be diluted by active track
+  // questions the student was never shown.
+  await db.run(
+    "UPDATE exams SET status = 'in_progress', startedAt = CURRENT_TIMESTAMP, servedQuestionIds = ? WHERE id = ?",
+    JSON.stringify(questions.map((q) => q.id)), exam.id,
+  );
   res.json({ message: 'Exam started', questions: questionsForClient, duration: exam.duration, totalQuestions: questions.length });
 });
 
@@ -400,11 +559,22 @@ router.post('/exam/:examId/submit', authenticateToken, async (req, res) => {
   const correctMap = {};
   dbQuestions.forEach(q => { correctMap[q.id] = q.correct; });
 
+  // Grade against the questions this attempt actually served (recorded at
+  // start). Falling back to every active track question would understate the
+  // score whenever the bank is bigger than the served set (e.g. 50 served of
+  // 53 active → a perfect attempt reported as 94%).
+  let servedIds = null;
+  try {
+    const parsed = JSON.parse(exam.servedQuestionIds || 'null');
+    if (Array.isArray(parsed)) servedIds = parsed;
+  } catch { servedIds = null; }
+
   let score = 0;
   let answered = 0;
   if (Array.isArray(answers)) {
     for (const ans of answers) {
-      if (ans && ans.questionId && correctMap[ans.questionId] !== undefined) {
+      if (ans && ans.questionId && correctMap[ans.questionId] !== undefined &&
+          (!servedIds || servedIds.includes(ans.questionId))) {
         answered++;
         if (ans.selectedOption === correctMap[ans.questionId]) {
           score++;
@@ -412,27 +582,36 @@ router.post('/exam/:examId/submit', authenticateToken, async (req, res) => {
       }
     }
   }
-  const total = dbQuestions.length;
+  const total = servedIds
+    ? servedIds.filter((id) => correctMap[id] !== undefined).length
+    : dbQuestions.length;
   const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
   let status = percentage >= 40 ? 'completed' : 'failed';
   if (expired) status = 'failed';
 
   await db.run("UPDATE exams SET status = ?, score = ?, answers = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?", status, percentage, JSON.stringify(answers || []), exam.id);
 
+  // No certificate (and no enrollment completion) without a successful
+  // payment — an unpaid/failed payment must never yield a certificate.
   if (status === 'completed') {
-    const existingCert = await db.get('SELECT id FROM certificates WHERE enrollmentId = ?', exam.enrollmentId);
-    if (!existingCert) {
-      const grade = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B+' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : 'D';
-      let certId;
-      let isUnique = false;
-      while (!isUnique) {
-        certId = `IQI-${new Date().getFullYear()}-${crypto.randomBytes(4).readUInt32BE(0) % 1000000}`;
-        const existing = await db.get('SELECT id FROM certificates WHERE certificateId = ?', certId);
-        if (!existing) isUnique = true;
+    const paid = await hasCompletedPayment(exam.enrollmentId, req.user.id);
+    if (paid) {
+      const existingCert = await db.get('SELECT id FROM certificates WHERE enrollmentId = ?', exam.enrollmentId);
+      if (!existingCert) {
+        const grade = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B+' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : 'D';
+        let certId;
+        let isUnique = false;
+        while (!isUnique) {
+          certId = `IQI-${new Date().getFullYear()}-${crypto.randomBytes(4).readUInt32BE(0) % 1000000}`;
+          const existing = await db.get('SELECT id FROM certificates WHERE certificateId = ?', certId);
+          if (!existing) isUnique = true;
+        }
+        await db.run('INSERT INTO certificates (userId, enrollmentId, examId, certificateId, grade, score) VALUES (?, ?, ?, ?, ?, ?)', req.user.id, exam.enrollmentId, exam.id, certId, grade, percentage);
       }
-      await db.run('INSERT INTO certificates (userId, enrollmentId, examId, certificateId, grade, score) VALUES (?, ?, ?, ?, ?, ?)', req.user.id, exam.enrollmentId, exam.id, certId, grade, percentage);
+      await db.run("UPDATE enrollments SET status = 'completed' WHERE id = ?", exam.enrollmentId);
+    } else {
+      console.warn(`Exam ${exam.id} passed but payment for enrollment ${exam.enrollmentId} is not completed — certificate withheld.`);
     }
-    await db.run("UPDATE enrollments SET status = 'completed' WHERE id = ?", exam.enrollmentId);
   }
 
   const updatedExam = await db.get('SELECT * FROM exams WHERE id = ?', exam.id);
@@ -446,9 +625,15 @@ router.post('/exam/:examId/submit', authenticateToken, async (req, res) => {
 router.use(require('./documents'));
 
 // ===================== LEARNING MODULES =====================
+// Content is served only for tracks whose payment succeeded — a pending,
+// failed or refunded payment leaves the internship's modules invisible.
 router.get('/learning-modules/:internshipId', authenticateToken, async (req, res) => {
   const internshipId = parseInt(req.params.internshipId);
   if (isNaN(internshipId)) return res.status(400).json({ error: 'Invalid internship ID' });
+
+  if (!(await paidEnrollmentFor(req.user.id, internshipId))) {
+    return res.status(403).json({ error: PAYMENT_REQUIRED_MSG });
+  }
 
   const modules = await db.all(`
     SELECT id, internshipId, title, description, moduleOrder, durationMinutes, difficulty, topics,
@@ -480,7 +665,11 @@ router.get('/learning-module/:moduleId', authenticateToken, async (req, res) => 
   `, moduleId);
   
   if (!module) return res.status(404).json({ error: 'Module not found' });
-  
+
+  if (!(await paidEnrollmentFor(req.user.id, module.internshipId))) {
+    return res.status(403).json({ error: PAYMENT_REQUIRED_MSG });
+  }
+
   // Parse JSON fields
   module.learningObjectives = JSON.parse(module.learningObjectives || '[]');
   module.contentSections = JSON.parse(module.contentSections || '[]');
@@ -494,6 +683,10 @@ router.get('/learning-module/:moduleId', authenticateToken, async (req, res) => 
 router.get('/learning-progress/:internshipId', authenticateToken, async (req, res) => {
   const internshipId = parseInt(req.params.internshipId);
   if (isNaN(internshipId)) return res.status(400).json({ error: 'Invalid internship ID' });
+
+  if (!(await paidEnrollmentFor(req.user.id, internshipId))) {
+    return res.status(403).json({ error: PAYMENT_REQUIRED_MSG });
+  }
 
   const modules = await db.all(`
     SELECT id FROM learning_modules WHERE internshipId = ?

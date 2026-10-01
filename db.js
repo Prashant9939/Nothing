@@ -178,6 +178,7 @@ await db.exec(`
     status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'failed', 'refunded')),
     receiptNumber TEXT UNIQUE,
     paidAt TEXT,
+    expiresAt TEXT,
     createdAt TEXT DEFAULT to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (enrollmentId) REFERENCES enrollments(id) ON DELETE CASCADE
@@ -197,6 +198,7 @@ await db.exec(`
     score INTEGER,
     status TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled', 'in_progress', 'completed', 'failed')),
     answers TEXT,
+    servedQuestionIds TEXT,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (internshipId) REFERENCES internships(id) ON DELETE CASCADE,
     FOREIGN KEY (enrollmentId) REFERENCES enrollments(id) ON DELETE CASCADE
@@ -354,12 +356,75 @@ const migrations = [
   'ALTER TABLE payments ADD COLUMN razorpayOrderId TEXT',
   'ALTER TABLE payments ADD COLUMN razorpayPaymentId TEXT',
   'ALTER TABLE payments ADD COLUMN internshipId INTEGER',
+  // Payment time limit: pending invoices expire and become 'failed'.
+  'ALTER TABLE payments ADD COLUMN expiresAt TEXT',
   // Invoice-before-enrollment flow: payments start with no enrollmentId
   // (SQLite always allowed NULL here; PG was created NOT NULL by mistake).
   'ALTER TABLE payments ALTER COLUMN enrollmentId DROP NOT NULL',
+  // Exam attempts record the exact questions served so grading uses the
+  // served set as denominator, not every active question in the track.
+  'ALTER TABLE exams ADD COLUMN servedQuestionIds TEXT',
+  // Admin refund marks the enrollment 'refunded' (revoked) — the original
+  // CHECK only allowed pending/active/completed/expired.
+  `ALTER TABLE enrollments DROP CONSTRAINT IF EXISTS enrollments_status_check,
+   ADD CONSTRAINT enrollments_status_check CHECK (status IN ('pending', 'active', 'completed', 'expired', 'refunded'))`,
 ];
 for (const sql of migrations) {
   try { await db.exec(sql); } catch (_) { /* column already exists */ }
+}
+
+// Payment time limit: give legacy pending invoices a deadline (createdAt +
+// PAYMENT_TIME_LIMIT_MINUTES), then fail everything already past it. Rows
+// whose createdAt can't be parsed get a fresh window from now so no pending
+// payment can live forever.
+const PAYMENT_TIME_LIMIT_MINUTES = (() => {
+  const n = Number(process.env.PAYMENT_TIME_LIMIT_MINUTES);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 30;
+})();
+try {
+  await db.run(`
+    UPDATE payments
+    SET expiresAt = to_char(createdAt::timestamp + (? || ' minutes')::interval, 'YYYY-MM-DD HH24:MI:SS')
+    WHERE status = 'pending' AND expiresAt IS NULL AND createdAt ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} '
+  `, String(PAYMENT_TIME_LIMIT_MINUTES));
+} catch (err) {
+  // Unparseable legacy createdAt — the statement below gives them a fresh window instead.
+  console.error('Payment expiry backfill (createdAt) failed:', err.message);
+}
+try {
+  await db.run(`
+    UPDATE payments
+    SET expiresAt = to_char(now() at time zone 'UTC' + (? || ' minutes')::interval, 'YYYY-MM-DD HH24:MI:SS')
+    WHERE status = 'pending' AND expiresAt IS NULL
+  `, String(PAYMENT_TIME_LIMIT_MINUTES));
+  await db.run(`
+    UPDATE payments
+    SET status = 'failed'
+    WHERE status = 'pending' AND expiresAt <= to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+  `);
+} catch (err) {
+  console.error('Payment expiry backfill failed:', err.message);
+}
+
+// One open invoice per (user, track). The enroll route already reuses pending
+// invoices, but concurrent requests could still stack duplicates — and paying
+// a duplicate later fails provisioning with a UNIQUE violation, stranding the
+// captured charge. Fail older duplicates first, then enforce it in the DB.
+try {
+  await db.run(`
+    UPDATE payments
+    SET status = 'failed'
+    WHERE status = 'pending'
+      AND id NOT IN (
+        SELECT MAX(id) FROM payments WHERE status = 'pending' GROUP BY userId, internshipId
+      )
+  `);
+  await db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_payments_pending_user_track
+    ON payments (userId, internshipId) WHERE status = 'pending'
+  `);
+} catch (err) {
+  console.error('Pending-invoice unique index failed:', err.message);
 }
 
 // Admin settings (attendance dating, document branding, verification link)
