@@ -1,8 +1,8 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect, Suspense } from 'react';
-import { MenuIcon, LogOutIcon, ChevronLeftIcon, SearchIcon, BellIcon, LayoutDashboardIcon, BookOpenIcon, UsersIcon, CreditCardIcon, FileTextIcon, LightbulbIcon, GlobeIcon, MegaphoneIcon, ClipboardIcon, SettingsIcon, ChartPieIcon, MessageSquareIcon } from "@animateicons/react/lucide";
-import { Spinner } from './ui';
+import { LogOutIcon, ChevronLeftIcon, SearchIcon, BellIcon, LayoutDashboardIcon, BookOpenIcon, UsersIcon, CreditCardIcon, FileTextIcon, LightbulbIcon, GlobeIcon, MegaphoneIcon, ClipboardIcon, SettingsIcon, ChartPieIcon, MessageSquareIcon } from "@animateicons/react/lucide";
+import { Spinner, HamburgerButton, MobileMenuSheet, menuItemClass, glCtaClass } from './ui';
 
 const iconMap: Record<string, React.ReactNode> = {
   dashboard: <LayoutDashboardIcon size={20} />,
@@ -48,12 +48,10 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-[#eef0f4]">
-      {mobileOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm" onClick={() => setMobileOpen(false)} />}
-      {profileOpen && <div className="fixed inset-0 z-20 lg:hidden" onClick={() => setProfileOpen(false)} aria-hidden="true" />}
+      {profileOpen && <div className="fixed inset-0 z-[25] lg:hidden" onClick={() => setProfileOpen(false)} aria-hidden="true" />}
 
-      {/* Sidebar */}
-      <aside className={`fixed top-0 left-0 h-dvh w-64 z-50 flex flex-col transition-all duration-300 ease-in-out
-        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
+      {/* Sidebar (desktop only; mobile uses the full-screen menu sheet) */}
+      <aside className={`fixed top-0 left-0 z-50 hidden h-dvh w-64 flex-col transition-all duration-300 ease-in-out lg:flex
         ${collapsed ? 'lg:w-[72px]' : 'lg:w-64'}
       `}>
         {/* 3D Sidebar background */}
@@ -139,9 +137,14 @@ export default function AdminLayout() {
       <div className={`transition-all duration-300 ${collapsed ? 'lg:ml-[72px]' : 'lg:ml-64'}`}>
         {/* Top bar */}
         <header className="sticky top-0 z-30 h-16 bg-white/70 backdrop-blur-xl border-b border-gray-200/60 flex items-center px-4 sm:px-6 gap-4 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-          <button onClick={() => setMobileOpen(true)} className="lg:hidden p-2 rounded-xl hover:bg-gray-100 text-gray-500 transition-colors">
-            <MenuIcon size={20} />
-          </button>
+          <HamburgerButton
+            open={mobileOpen}
+            onClick={() => {
+              setProfileOpen(false);
+              setMobileOpen((v) => !v);
+            }}
+            className="lg:hidden"
+          />
 
           <div className="flex-1 hidden sm:block max-w-md">
             <div className="relative">
@@ -192,6 +195,29 @@ export default function AdminLayout() {
             </div>
           </div>
         </header>
+
+        {/* Mobile menu — GlobalLogic-style full-screen sheet */}
+        <MobileMenuSheet open={mobileOpen} onClose={() => setMobileOpen(false)}>
+          {links.map((link) => {
+            const active = location.pathname === link.path;
+            return (
+              <Link
+                key={link.path}
+                to={link.path}
+                onClick={() => setMobileOpen(false)}
+                aria-current={active ? 'page' : undefined}
+                className={menuItemClass(active)}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+          <div className="mt-8 flex w-full flex-wrap items-center gap-4">
+            <button type="button" onClick={handleLogout} className={glCtaClass}>
+              Logout
+            </button>
+          </div>
+        </MobileMenuSheet>
 
         {/* Content */}
         <main className="p-4 sm:p-6 lg:p-8">

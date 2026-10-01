@@ -7,3 +7,5 @@ export { default as PageHeader } from './PageHeader';
 export { default as Modal } from './Modal';
 export { Input, PasswordField } from './Input';
 export { default as ErrorBoundary } from './ErrorBoundary';
+export { HamburgerButton, MobileMenuSheet } from './MobileMenu';
+export { menuItemClass, glCtaClass, glSecondaryClass } from './menuStyles';

@@ -4,12 +4,12 @@ import { useAuth } from '../context/AuthContext';
 import { usePopup } from '../context/PopupContext';
 import { studentApi } from '../api';
 import {
-  MenuIcon, LogOutIcon, ChevronLeftIcon, ChevronDownIcon,
+  LogOutIcon, ChevronLeftIcon, ChevronDownIcon,
   HouseIcon, RocketIcon, FileTextIcon, BookOpenIcon, ClipboardIcon, UserIcon,
 } from '@animateicons/react/lucide';
 import AnnouncementBell from './AnnouncementBell';
 import ChannelPromoBanner from './ChannelPromoBanner';
-import { ErrorBoundary, PageLoader } from './ui';
+import { ErrorBoundary, PageLoader, HamburgerButton, MobileMenuSheet, menuItemClass, glCtaClass } from './ui';
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <HouseIcon size={20} />,
@@ -105,36 +105,6 @@ export default function StudentLayout() {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
-  // Lock background scroll while the mobile/tablet drawer is open
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prevOverflow; };
-  }, [mobileOpen]);
-
-  // The drawer and its overlay are hidden at lg (lg:translate-x-0 / lg:hidden).
-  // If the viewport crosses into lg while the drawer is open (device rotation,
-  // split-view resize, DevTools breakpoint change) the overlay that closes it
-  // disappears while the scroll lock stays applied — leaving the page
-  // unscrollable. Close the drawer whenever we reach lg so the lock is
-  // always released.
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)');
-    const onChange = () => { if (mq.matches) setMobileOpen(false); };
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-
-  // Scroll-lock safety net. Runs on route change and whenever the drawer
-  // closes — i.e. AFTER the lock effect's cleanup above (cleanups always run
-  // before effects) — so a stale `prev` restored by any unmounting overlay
-  // can never leave the page unscrollable. Skipped while the drawer is open
-  // so the drawer's own lock is never cancelled.
-  useEffect(() => {
-    if (!mobileOpen) document.body.style.overflow = '';
-  }, [location.pathname, mobileOpen]);
-
   // Close avatar menu on outside click / Esc
   useEffect(() => {
     if (!menuOpen) return;
@@ -174,14 +144,10 @@ export default function StudentLayout() {
   return (
     <div className="min-h-screen bg-surface">
       <ChannelPromoBanner />
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} />
-      )}
 
-      {/* Sidebar */}
+      {/* Sidebar (desktop only; mobile uses the full-screen menu sheet) */}
       <aside
-        className={`fixed left-0 top-0 z-50 flex h-dvh flex-col transition-all duration-300 ease-in-out
-          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
+        className={`fixed left-0 top-0 z-50 hidden h-dvh flex-col transition-all duration-300 ease-in-out lg:flex
           ${collapsed ? 'lg:w-[72px]' : 'lg:w-64'}`}
       >
         <div className="absolute inset-0 rounded-r-2xl bg-gradient-to-b from-[#0a0f1e] via-[#0f172a] to-[#111827] shadow-[8px_0_30px_rgba(0,0,0,0.4)]" />
@@ -293,13 +259,11 @@ export default function StudentLayout() {
       <div className={`transition-all duration-300 ${collapsed ? 'lg:ml-[72px]' : 'lg:ml-64'}`}>
         {/* Topbar */}
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 backdrop-blur-xl sm:px-6">
-          <button
-            onClick={() => setMobileOpen(true)}
-            aria-label="Open menu"
-            className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 lg:hidden"
-          >
-            <MenuIcon size={20} />
-          </button>
+          <HamburgerButton
+            open={mobileOpen}
+            onClick={() => setMobileOpen((v) => !v)}
+            className="lg:hidden"
+          />
 
           <div className="min-w-0">
             <p className="hidden text-[11px] font-medium uppercase tracking-wider text-slate-400 sm:block">Student Portal</p>
@@ -354,6 +318,32 @@ export default function StudentLayout() {
             </div>
           </div>
         </header>
+
+        {/* Mobile menu — GlobalLogic-style full-screen sheet */}
+        <MobileMenuSheet open={mobileOpen} onClose={() => setMobileOpen(false)}>
+          {navSections
+            .flatMap((section) => section.links)
+            .filter(isVisible)
+            .map((link) => {
+              const active = isLinkActive(link);
+              return (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={active ? 'page' : undefined}
+                  className={menuItemClass(active)}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          <div className="mt-8 flex w-full flex-wrap items-center gap-4">
+            <button type="button" onClick={handleLogout} className={glCtaClass}>
+              Logout
+            </button>
+          </div>
+        </MobileMenuSheet>
 
         {/* Content */}
         <main className="p-4 sm:p-6 lg:p-8">
