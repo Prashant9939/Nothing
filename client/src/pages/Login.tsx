@@ -88,7 +88,7 @@ export default function Login() {
             Email
           </label>
           <div className="relative">
-            <MailIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <MailIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
               id="login-email"
               type="text"
@@ -107,7 +107,7 @@ export default function Login() {
             Password
           </label>
           <div className="relative">
-            <LockIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <LockIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
               id="login-password"
               type={showPassword ? 'text' : 'password'}
@@ -122,7 +122,7 @@ export default function Login() {
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               aria-label={showPassword ? 'Hide password' : 'Show password'}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 transition-colors"
             >
               {showPassword ? <EyeOffIcon size={20} /> : <EyeIcon size={20} />}
             </button>

@@ -96,10 +96,10 @@ export default function ForgotPassword() {
                 <div className={`flex-1 h-0.5 mx-1 sm:mx-3 mt-[15px] rounded-full transition-all duration-500 ${step > i ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-gray-200/60'}`} />
               )}
               <div className="flex flex-col items-center gap-1 shrink-0 w-24 sm:w-32">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-orange-500/30 ring-4 ring-orange-100' : 'bg-gray-200/70 text-gray-400'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-orange-500/30 ring-4 ring-orange-100' : 'bg-gray-200/70 text-gray-500'}`}>
                   {step > i + 1 ? <CheckIcon size={16} /> : i + 1}
                 </div>
-                <span className={`text-[11px] font-medium transition-colors ${step === i + 1 ? 'text-orange-600' : step > i + 1 ? 'text-green-600' : 'text-gray-400'}`}>
+                <span className={`text-[11px] font-medium transition-colors ${step === i + 1 ? 'text-orange-600' : step > i + 1 ? 'text-green-600' : 'text-gray-500'}`}>
                   {label}
                 </span>
               </div>
@@ -140,7 +140,7 @@ export default function ForgotPassword() {
             <div>
               <label htmlFor="fp-email" className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
               <div className="relative">
-                <MailIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <MailIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
                   id="fp-email"
                   type="email"
@@ -155,7 +155,7 @@ export default function ForgotPassword() {
             <div>
               <label htmlFor="fp-phone" className="block text-sm font-medium text-gray-700 mb-1.5">Phone number</label>
               <div className="relative">
-                <PhoneIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <PhoneIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
                   id="fp-phone"
                   type="tel"
@@ -170,7 +170,7 @@ export default function ForgotPassword() {
             <div>
               <label htmlFor="fp-regno" className="block text-sm font-medium text-gray-700 mb-1.5">Registration number</label>
               <div className="relative">
-                <FileTextIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <FileTextIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
                   id="fp-regno"
                   type="text"
@@ -185,7 +185,7 @@ export default function ForgotPassword() {
             <div>
               <label htmlFor="fp-rollno" className="block text-sm font-medium text-gray-700 mb-1.5">Roll number</label>
               <div className="relative">
-                <BookOpenIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <BookOpenIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
                   id="fp-rollno"
                   type="text"
@@ -216,7 +216,7 @@ export default function ForgotPassword() {
           <div>
             <label htmlFor="fp-new" className="block text-sm font-medium text-gray-700 mb-1.5">New password</label>
             <div className="relative">
-              <LockIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <LockIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
                 id="fp-new"
                 type={showPassword ? 'text' : 'password'}
@@ -231,7 +231,7 @@ export default function ForgotPassword() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 transition-colors"
               >
                 {showPassword ? <EyeOffIcon size={20} /> : <EyeIcon size={20} />}
               </button>
@@ -241,7 +241,7 @@ export default function ForgotPassword() {
           <div>
             <label htmlFor="fp-confirm" className="block text-sm font-medium text-gray-700 mb-1.5">Confirm password</label>
             <div className="relative">
-              <LockIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <LockIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
                 id="fp-confirm"
                 type={showPassword ? 'text' : 'password'}
@@ -258,7 +258,7 @@ export default function ForgotPassword() {
               {newPassword === confirmPassword ? <><CheckIcon size={13} /> Passwords match</> : <><XIcon size={13} /> Passwords do not match yet</>}
             </p>
           )}
-          <p className="text-xs text-gray-400">6+ characters with uppercase, lowercase, a number and a symbol.</p>
+          <p className="text-xs text-gray-500">6+ characters with uppercase, lowercase, a number and a symbol.</p>
           <div className="flex gap-3 pt-1">
             <button
               type="button"

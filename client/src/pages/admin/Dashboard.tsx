@@ -41,9 +41,9 @@ export default function AdminDashboard() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-slate-500/5 rounded-full blur-3xl" />
         <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-white/50 text-xs font-medium mb-1">Admin Panel</p>
+            <p className="text-white/65 text-xs font-medium mb-1">Admin Panel</p>
             <h1 className="text-xl sm:text-2xl font-bold drop-shadow-lg">Welcome back, {user?.firstName}</h1>
-            <p className="text-white/50 text-sm mt-1">Here's what's happening across your platform today.</p>
+            <p className="text-white/65 text-sm mt-1">Here's what's happening across your platform today.</p>
           </div>
           <button
             onClick={() => setShowNewReg(true)}
@@ -71,7 +71,7 @@ export default function AdminDashboard() {
         <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
           <div className="p-5 border-b border-gray-100 flex items-center justify-between">
             <h3 className="font-semibold text-gray-900 text-sm">Recent Enrollments</h3>
-            <span className="text-xs text-gray-400">{recentEnrollments.length} total</span>
+            <span className="text-xs text-gray-500">{recentEnrollments.length} total</span>
           </div>
           <div className="divide-y divide-gray-50">
             {recentEnrollments.slice(0, 5).map((e) => (
@@ -94,7 +94,7 @@ export default function AdminDashboard() {
         <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
           <div className="p-5 border-b border-gray-100 flex items-center justify-between">
             <h3 className="font-semibold text-gray-900 text-sm">Recent Payments</h3>
-            <span className="text-xs text-gray-400">{recentPayments.length} total</span>
+            <span className="text-xs text-gray-500">{recentPayments.length} total</span>
           </div>
           <div className="divide-y divide-gray-50">
             {recentPayments.slice(0, 5).map((p) => (

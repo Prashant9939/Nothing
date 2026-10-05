@@ -8,8 +8,8 @@ export default function PasswordHints({ value, className = '' }: { value: string
       {PASSWORD_CHECKS.map((req) => {
         const ok = checks[req.key];
         return (
-          <li key={req.key} className={`flex items-center gap-1.5 ${ok ? 'text-emerald-600' : 'text-gray-400'}`}>
-            <span className={`inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold leading-none ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+          <li key={req.key} className={`flex items-center gap-1.5 ${ok ? 'text-emerald-600' : 'text-gray-500'}`}>
+            <span className={`inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold leading-none ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
               {ok ? '✓' : ''}
             </span>
             {req.label}

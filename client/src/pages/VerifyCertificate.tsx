@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BarChart3, CheckCircle2, Download, FileSignature, FileText, Globe, MessageSquare, Search, ShieldCheck, XCircle } from 'lucide-react';
+import { BarChart3, CheckCircle2, Globe, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { authApi } from '../api';
 
 interface CertResult {
@@ -103,12 +103,6 @@ export default function VerifyCertificate() {
     { icon: <Globe className="w-8 h-8 text-orange-500" />, title: 'Public Access', desc: 'Anyone can verify - employers, colleges, and recruiters.' },
   ];
 
-  const downloadableForms = [
-    { icon: <FileSignature className="w-8 h-8 text-orange-500" />, title: 'Consent Form', desc: 'Permission for processing your details and online verification of your credentials.', file: 'consent' },
-    { icon: <MessageSquare className="w-8 h-8 text-orange-500" />, title: 'Feedback Form', desc: 'Share your experience of the internship program and suggest improvements.', file: 'feedback' },
-    { icon: <FileText className="w-8 h-8 text-orange-500" />, title: 'Internship Undertaking', desc: 'Self-declaration of honesty and adherence to the program code of conduct.', file: 'undertaking' },
-  ];
-
   return (
     <div>
       {/* Hero */}
@@ -167,7 +161,7 @@ export default function VerifyCertificate() {
                 {loading ? 'Verifying...' : 'Verify'}
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-2">Certificate: IQI-YYYY-NNNNNN · Receipt: IQI-REC-YYYY-NNNNNN · Offer/Report/Attendance: IQI-OL/PR/ATT-YYYY-NNNNNN</p>
+            <p className="text-xs text-gray-500 mt-2">Certificate: IQI-YYYY-NNNNNN · Receipt: IQI-REC-YYYY-NNNNNN · Offer/Report/Attendance: IQI-OL/PR/ATT-YYYY-NNNNNN</p>
           </form>
 
           {/* Error */}
@@ -197,7 +191,7 @@ export default function VerifyCertificate() {
                   <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Issued To</p>
                   <p className="text-2xl font-bold text-gray-800">{result.name}</p>
                   <p className="text-sm text-gray-500 mt-1">
-                    {result.course}{result.college ? ` · ${result.college}` : ''}
+                    {(result.course || '').toUpperCase()}{result.college ? ` · ${result.college}` : ''}
                   </p>
                 </div>
 
@@ -238,7 +232,7 @@ export default function VerifyCertificate() {
                   )}
                 </div>
 
-                <div className="flex items-center justify-between gap-3 text-center text-xs text-gray-400 pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between gap-3 text-center text-xs text-gray-500 pt-3 border-t border-gray-100">
                   <span>Issued on {formatDate(result.issuedAt)}</span>
                   <button
                     onClick={reset}
@@ -255,36 +249,9 @@ export default function VerifyCertificate() {
           {!result && !error && (
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center mt-6">
               <p className="text-gray-600 text-sm">Enter the ID printed on your certificate, receipt, offer letter, report or attendance sheet to verify it.</p>
-              <p className="mt-2 text-xs text-gray-400">Or simply scan the QR code on the document</p>
+              <p className="mt-2 text-xs text-gray-500">Or simply scan the QR code on the document</p>
             </div>
           )}
-        </div>
-      </section>
-
-      {/* Downloadable Forms */}
-      <section className="py-16 px-4">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-bold mb-4">Downloadable Forms</h2>
-            <p className="text-gray-600 max-w-2xl mx-auto">
-              Download commonly used forms, fill them in and submit them as required — no login needed.
-            </p>
-          </div>
-          <div className="grid sm:grid-cols-3 gap-6">
-            {downloadableForms.map((f) => (
-              <div key={f.file} className="bg-white border border-gray-200 rounded-xl p-6 text-center hover:shadow-lg hover:-translate-y-1 transition-all flex flex-col">
-                <div className="text-4xl mb-4">{f.icon}</div>
-                <h3 className="font-semibold mb-2">{f.title}</h3>
-                <p className="text-gray-600 text-sm mb-5 flex-1">{f.desc}</p>
-                <a
-                  href={`/api/forms/${f.file}`}
-                  className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-orange-500 text-white text-sm font-semibold rounded-lg hover:bg-orange-600 transition-colors"
-                >
-                  <Download size={16} /> Download PDF
-                </a>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 

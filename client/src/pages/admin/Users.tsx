@@ -79,7 +79,7 @@ export default function AdminUsers() {
                   <td className="p-4 font-medium text-gray-900">{u.firstName} {u.lastName}</td>
                   <td className="p-4 text-gray-500">{u.email}</td>
                   <td className="p-4 text-gray-500">{u.college}</td>
-                  <td className="p-4 text-gray-500">{u.course}</td>
+                  <td className="p-4 text-gray-500">{(u.course || '').toUpperCase()}</td>
                   <td className="p-4">
                     <select value={u.role} onChange={(e) => updateRole(u.id, e.target.value)} className="text-xs border border-gray-200 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-700/20">
                       <option value="student">Student</option>
@@ -125,7 +125,7 @@ export default function AdminUsers() {
                     <h2 className="text-xl font-bold text-gray-900">{selectedUser.user.firstName} {selectedUser.user.lastName}</h2>
                     <p className="text-sm text-gray-500">{selectedUser.user.email}</p>
                   </div>
-                  <button onClick={() => setSelectedUser(null)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"><X size={18} /></button>
+                  <button onClick={() => setSelectedUser(null)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors"><X size={18} /></button>
                 </div>
 
                 <div className="p-6 space-y-6">
@@ -134,27 +134,27 @@ export default function AdminUsers() {
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Personal Information</h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-gray-50 rounded-xl p-3">
-                        <div className="text-xs text-gray-400">Phone</div>
+                        <div className="text-xs text-gray-500">Phone</div>
                         <div className="text-sm font-medium text-gray-900">{selectedUser.user.phone || 'N/A'}</div>
                       </div>
                       <div className="bg-gray-50 rounded-xl p-3">
-                        <div className="text-xs text-gray-400">University</div>
+                        <div className="text-xs text-gray-500">University</div>
                         <div className="text-sm font-medium text-gray-900">{(selectedUser.user as any).university || 'N/A'}</div>
                       </div>
                       <div className="bg-gray-50 rounded-xl p-3">
-                        <div className="text-xs text-gray-400">College</div>
+                        <div className="text-xs text-gray-500">College</div>
                         <div className="text-sm font-medium text-gray-900">{selectedUser.user.college || 'N/A'}</div>
                       </div>
                       <div className="bg-gray-50 rounded-xl p-3">
-                        <div className="text-xs text-gray-400">Course</div>
-                        <div className="text-sm font-medium text-gray-900">{selectedUser.user.course || 'N/A'}</div>
+                        <div className="text-xs text-gray-500">Course</div>
+                        <div className="text-sm font-medium text-gray-900">{selectedUser.user.course ? selectedUser.user.course.toUpperCase() : 'N/A'}</div>
                       </div>
                       <div className="bg-gray-50 rounded-xl p-3">
-                        <div className="text-xs text-gray-400">Role</div>
+                        <div className="text-xs text-gray-500">Role</div>
                         <div className="text-sm font-medium text-gray-900 capitalize">{selectedUser.user.role}</div>
                       </div>
                       <div className="bg-gray-50 rounded-xl p-3">
-                        <div className="text-xs text-gray-400">Joined</div>
+                        <div className="text-xs text-gray-500">Joined</div>
                         <div className="text-sm font-medium text-gray-900">{new Date(selectedUser.user.createdAt).toLocaleDateString()}</div>
                       </div>
                     </div>
@@ -164,14 +164,14 @@ export default function AdminUsers() {
                   <div>
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Enrollments ({selectedUser.enrollments.length})</h3>
                     {selectedUser.enrollments.length === 0 ? (
-                      <p className="text-sm text-gray-400">No enrollments</p>
+                      <p className="text-sm text-gray-500">No enrollments</p>
                     ) : (
                       <div className="space-y-2">
                         {selectedUser.enrollments.map((e: any) => (
                           <div key={e.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl p-3">
                             <div>
                               <div className="text-sm font-medium text-gray-900">{e.internshipTitle}</div>
-                              <div className="text-xs text-gray-400">{new Date(e.enrolledAt).toLocaleDateString()}</div>
+                              <div className="text-xs text-gray-500">{new Date(e.enrolledAt).toLocaleDateString()}</div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${e.status === 'active' ? 'bg-green-100 text-green-700' : e.status === 'completed' ? 'bg-blue-100 text-blue-700' : e.status === 'expired' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{e.status}</span>
@@ -186,14 +186,14 @@ export default function AdminUsers() {
                   <div>
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Payments ({selectedUser.payments.length})</h3>
                     {selectedUser.payments.length === 0 ? (
-                      <p className="text-sm text-gray-400">No payments</p>
+                      <p className="text-sm text-gray-500">No payments</p>
                     ) : (
                       <div className="space-y-2">
                         {selectedUser.payments.map((p: any) => (
                           <div key={p.id} className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
                             <div>
                               <div className="text-sm font-medium text-gray-900">₹{Number(p.amount).toLocaleString('en-IN')}</div>
-                              <div className="text-xs text-gray-400">{p.receiptNumber} · {new Date(p.createdAt).toLocaleDateString()}</div>
+                              <div className="text-xs text-gray-500">{p.receiptNumber} · {new Date(p.createdAt).toLocaleDateString()}</div>
                             </div>
                             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${p.status === 'completed' ? 'bg-green-100 text-green-700' : p.status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{p.status}</span>
                           </div>
@@ -206,14 +206,14 @@ export default function AdminUsers() {
                   <div>
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Exams ({selectedUser.exams.length})</h3>
                     {selectedUser.exams.length === 0 ? (
-                      <p className="text-sm text-gray-400">No exams</p>
+                      <p className="text-sm text-gray-500">No exams</p>
                     ) : (
                       <div className="space-y-2">
                         {selectedUser.exams.map((ex: any) => (
                           <div key={ex.id} className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
                             <div>
                               <div className="text-sm font-medium text-gray-900">{ex.internshipTitle || `Exam #${ex.id}`}</div>
-                              <div className="text-xs text-gray-400">Score: {ex.score != null ? `${ex.score}%` : 'N/A'} · {new Date(ex.createdAt || ex.startedAt || Date.now()).toLocaleDateString()}</div>
+                              <div className="text-xs text-gray-500">Score: {ex.score != null ? `${ex.score}%` : 'N/A'} · {new Date(ex.createdAt || ex.startedAt || Date.now()).toLocaleDateString()}</div>
                             </div>
                             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ex.status === 'completed' ? 'bg-green-100 text-green-700' : ex.status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{ex.status}</span>
                           </div>
@@ -226,16 +226,16 @@ export default function AdminUsers() {
                   <div>
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Certificates ({selectedUser.certificates.length})</h3>
                     {selectedUser.certificates.length === 0 ? (
-                      <p className="text-sm text-gray-400">No certificates</p>
+                      <p className="text-sm text-gray-500">No certificates</p>
                     ) : (
                       <div className="space-y-2">
                         {selectedUser.certificates.map((c: any) => (
                           <div key={c.id} className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
                             <div>
                               <div className="text-sm font-medium text-gray-900">{c.certificateId}</div>
-                              <div className="text-xs text-gray-400">Grade: {c.grade} · Score: {c.score}%</div>
+                              <div className="text-xs text-gray-500">Grade: {c.grade} · Score: {c.score}%</div>
                             </div>
-                            <span className="text-xs text-gray-400">{c.issuedAt ? new Date(c.issuedAt).toLocaleDateString() : 'N/A'}</span>
+                            <span className="text-xs text-gray-500">{c.issuedAt ? new Date(c.issuedAt).toLocaleDateString() : 'N/A'}</span>
                           </div>
                         ))}
                       </div>

@@ -42,14 +42,14 @@ export default function DocCard({ icon, tone = 'slate', title, meta, onDownload,
   if (locked) {
     return (
       <div className="flex items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-white/60 p-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500">
           <Lock size={18} />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-400">{title}</p>
-          <p className="truncate text-xs text-slate-400">{lockReason}</p>
+          <p className="truncate text-sm font-medium text-slate-600">{title}</p>
+          <p className="truncate text-xs text-slate-500">{lockReason}</p>
         </div>
-        <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
           <Lock size={10} /> Locked
         </span>
       </div>
@@ -97,7 +97,7 @@ export default function DocCard({ icon, tone = 'slate', title, meta, onDownload,
         </div>
         <p className="mt-0.5 truncate text-xs text-slate-500">{meta}</p>
       </div>
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-400 transition-all group-hover:bg-emerald-50 group-hover:text-emerald-600" aria-hidden="true">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition-all group-hover:bg-emerald-50 group-hover:text-emerald-600" aria-hidden="true">
         {busy ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" aria-hidden="true" /> : <Download size={16} className="transition-transform group-hover:translate-x-0.5" />}
       </span>
     </button>

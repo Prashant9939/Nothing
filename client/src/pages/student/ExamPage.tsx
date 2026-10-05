@@ -166,7 +166,7 @@ function SectionHeading({ title, count, noun = 'exam', icon, iconClass }: {
     <div className="mb-4 flex items-center gap-2.5">
       <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconClass}`}>{icon}</span>
       <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-      <span className="text-xs text-slate-400">{count} {noun}{count === 1 ? '' : 's'}</span>
+      <span className="text-xs text-slate-500">{count} {noun}{count === 1 ? '' : 's'}</span>
     </div>
   );
 }
@@ -213,7 +213,7 @@ function UpcomingCard({ exam }: { exam: Exam }) {
         <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
         <p className="mt-2 text-sm text-slate-600">
           Score <span className="font-semibold text-slate-900">{exam.score ?? 0}%</span>
-          <span className="mx-1.5 text-slate-300">|</span>
+          <span className="mx-1.5 text-slate-400">|</span>
           Required {exam.passingMarks}%
         </p>
         <p className="mt-3 text-xs text-slate-500">Review the learning modules and contact your administrator to request a retake.</p>

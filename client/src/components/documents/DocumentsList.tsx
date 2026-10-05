@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Award, BarChart3, CalendarDays, Check, FileText, FolderOpen, Receipt, Wallet } from 'lucide-react';
+import { AlertTriangle, Award, BarChart3, BookOpen, CalendarDays, Check, FileSignature, FileText, FolderOpen, GraduationCap, MessageSquare, PenLine, Receipt, Wallet } from 'lucide-react';
 import { studentApi } from '../../api';
 import type { Enrollment, Payment, Exam, Certificate } from '../../api';
 import { usePopup } from '../../context/PopupContext';
@@ -85,7 +85,9 @@ export default function DocumentsList() {
 
   const availableCount = enrollments.reduce((acc, e) => {
     const s = state(e.id);
-    return acc + (s.isPaid ? 2 : 0) + (s.isPassed ? 2 : 0) + (s.cert ? 1 : 0);
+    // paid: receipt + offer letter; passed: report, attendance, marksheet, log
+    // book, consent, undertaking, feedback; certificate once issued.
+    return acc + (s.isPaid ? 2 : 0) + (s.isPassed ? 7 : 0) + (s.cert ? 1 : 0);
   }, 0);
   const pendingPayments = payments.filter((p) => p.status === 'pending').length;
   const inProgress = enrollments.filter((e) => e.status === 'active').length;
@@ -229,6 +231,51 @@ export default function DocumentsList() {
           locked={!isPassed}
           lockReason="Pass the exam to unlock"
           onDownload={isPassed ? () => download(`/api/student/download/attendance/${selected.id}`, `attendance-${selected.id}.pdf`) : undefined}
+        />
+        <DocCard
+          icon={<GraduationCap size={18} />}
+          tone="violet"
+          title="Internship Marksheet"
+          meta="Single-page marks, grade & result"
+          locked={!isPassed}
+          lockReason="Pass the exam to unlock"
+          onDownload={isPassed ? () => download(`/api/student/download/marksheet/${selected.id}`, `internship-marksheet-${selected.id}.pdf`) : undefined}
+        />
+        <DocCard
+          icon={<BookOpen size={18} />}
+          tone="sky"
+          title="Daily Log Book"
+          meta="Day-wise activity record · multi-page"
+          locked={!isPassed}
+          lockReason="Pass the exam to unlock"
+          onDownload={isPassed ? () => download(`/api/student/download/log-book/${selected.id}`, `daily-log-book-${selected.id}.pdf`) : undefined}
+        />
+        <DocCard
+          icon={<FileSignature size={18} />}
+          tone="slate"
+          title="Consent Form"
+          meta="College permission letter for the internship"
+          locked={!isPassed}
+          lockReason="Pass the exam to unlock"
+          onDownload={isPassed ? () => download(`/api/student/download/form/consent/${selected.id}`, `consent-form-${selected.id}.pdf`) : undefined}
+        />
+        <DocCard
+          icon={<PenLine size={18} />}
+          tone="amber"
+          title="Internship Undertaking"
+          meta="Self-declaration & code of conduct"
+          locked={!isPassed}
+          lockReason="Pass the exam to unlock"
+          onDownload={isPassed ? () => download(`/api/student/download/form/undertaking/${selected.id}`, `undertaking-${selected.id}.pdf`) : undefined}
+        />
+        <DocCard
+          icon={<MessageSquare size={18} />}
+          tone="violet"
+          title="Feedback Form"
+          meta="Share your experience of the program"
+          locked={!isPassed}
+          lockReason="Pass the exam to unlock"
+          onDownload={isPassed ? () => download(`/api/student/download/form/feedback/${selected.id}`, `feedback-form-${selected.id}.pdf`) : undefined}
         />
         {cert ? (
           <DocCard

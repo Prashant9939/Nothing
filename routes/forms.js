@@ -1,6 +1,10 @@
-// Public, downloadable form PDFs shown on the certificate-verification page.
-// No authentication — these are blank templates anyone can download, print and
-// sign. Branding (company name, address, CIN, stamp, disclaimer) comes from
+// Downloadable form PDFs (consent letter, feedback form, undertaking).
+// Two entry points share the same renderers:
+//   - GET /api/forms/:type            public blank templates (no auth)
+//   - GET /api/student/download/form/ authenticated copies unlocked after the
+//     student passes the exam (routes/documents.js passes a `student` context
+//     so fields such as name, roll no. and college are pre-filled).
+// Branding (company name, address, CIN, stamp, disclaimer) comes from
 // lib/documentBrand so the forms match every other generated document.
 const express = require('express');
 const path = require('path');
@@ -138,20 +142,27 @@ const RIGHT = () => L + (595.28 - 100); // A4 width 595.28, symmetric margins
 const INNER_W = () => RIGHT() - L;
 const COL_W = () => (INNER_W() - 24) / 2;
 
-// Label + writing line. Returns the y for the next row.
-function field(doc, label, x, y, w) {
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(GREEN.dark).text(label.toUpperCase(), x, y, { width: w });
+// Label + optional pre-filled value + writing line. Returns the y for the
+// next row. Blank forms leave the space above the line empty to write on.
+function field(doc, label, x, y, w, value) {
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GREEN.dark).text(label.toUpperCase(), x, y, { width: w });
+  if (value) {
+    doc.font('Helvetica').fontSize(10).fillColor(GREEN.ink)
+      .text(String(value), x, y + 9.5, { width: w, height: 13, ellipsis: true });
+  }
   doc.lineWidth(0.8).strokeColor('#9CA3AF');
-  doc.moveTo(x, y + 20).lineTo(x + w, y + 20).stroke();
+  doc.moveTo(x, y + 24).lineTo(x + w, y + 24).stroke();
   return y + 34;
 }
 
-// Two-column grid of fields: rows = [[label, label], ...]
+// Two-column grid of fields: rows = [[label, label], ...]; a cell may also be
+// [label, label, valueA, valueB] to pre-fill both columns.
 function fieldGrid(doc, rows, y) {
   const cw = COL_W();
-  for (const [a, b] of rows) {
-    field(doc, a, L, y, cw);
-    if (b) field(doc, b, L + cw + 24, y, cw);
+  for (const row of rows) {
+    const [a, b, va, vb] = row;
+    field(doc, a, L, y, cw, va);
+    if (b) field(doc, b, L + cw + 24, y, cw, vb);
     y += 34;
   }
   return y;
@@ -237,48 +248,120 @@ function signatureBlock(doc, y) {
 }
 
 // ===================== FORM DEFINITIONS =====================
-function startForm(res, filename, title, subtitle, qr) {
-  const doc = new PDFDocument({ size: 'A4', margin: 50 });
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
-  doc.pipe(res);
-  drawWatermark(doc, 'IQINTERN');
+// Default letterhead: website brand top-left, verification QR top-right,
+// title + subtitle. Returns the y where the form body should start.
+function defaultHeader(doc, form, qr) {
   drawBrand(doc, 50, 42);
   drawQrBadge(doc, qr, 474, 46, 58);
-  drawTitle(doc, title, 92, { size: 24 });
+  drawTitle(doc, form.title, 92, { size: 24 });
   doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.gray)
-    .text(subtitle, 50, 140, { width: INNER_W() });
-  return doc;
+    .text(form.subtitle, 50, 140, { width: INNER_W() });
+  return 165;
 }
 
 const FORMS = {
+  // College-headed permission letter: the institution permits a student to
+  // complete the internship (28 days / 120 hrs at the standard duration).
+  // Letter number, date and every signature stay blank so the college can
+  // print, sign and stamp it.
   consent: {
-    filename: 'IQI-Consent-Form.pdf',
-    title: 'CONSENT FORM',
-    subtitle: 'Internship Program — Personal Data & Verification Consent',
-    render(doc) {
-      let y = sectionBar(doc, 'CONSENT DECLARATIONS', 165);
-      doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body)
-        .text('Please read each statement carefully and tick the box to indicate your consent. This form must be signed and dated to be valid.', L, y, { width: INNER_W(), lineGap: 2 });
-      y = doc.y + 10;
-      const items = [
-        `I consent to the collection, storage and processing of my personal, academic and program-related information by ${companyName()} for the administration of the internship program.`,
-        'I consent to the online verification of my credentials, attendance and results by employers, educational institutions and other authorised parties through the official verification portal.',
-        'I consent to receive program-related communications, including schedules, updates and results, via email, SMS and phone.',
-        'I understand that this consent may be withdrawn at any time in writing by contacting the program office.',
-      ];
-      for (const t of items) y = checkItem(doc, t, L, y, INNER_W());
+    filename: 'IQI-College-Consent-Letter.pdf',
+    header(doc, ctx) {
+      const w = doc.page.width;
+      const college = (ctx.student && ctx.student.college) || 'COLLEGE / INSTITUTION NAME';
+      let size = 24;
+      while (size > 12 && doc.widthOfString(college, { font: 'Helvetica-Bold', size }) > w - 100) size -= 1;
+      doc.font('Helvetica-Bold').fontSize(size).fillColor(GREEN.dark)
+        .text(college, 50, 56, { width: w - 100, align: 'center' });
+      const nameW = Math.min(doc.widthOfString(college, { font: 'Helvetica-Bold', size }) + 40, w - 100);
+      const rx = (w - nameW) / 2;
+      const g = doc.linearGradient(rx, 0, rx + nameW, 0);
+      g.stop(0, GREEN.dark).stop(1, GREEN.wave);
+      doc.rect(rx, 56 + size * 1.3 + 6, nameW, 3).fill(g);
 
-      y = sectionBar(doc, 'APPLICANT DETAILS', y + 14);
+      // Blank letter number + date for the college to fill in
+      const ry = 56 + size * 1.3 + 26;
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark).text('Ref. No.:', 50, ry, { width: 62 });
+      doc.lineWidth(0.8).strokeColor('#9CA3AF').moveTo(118, ry + 12).lineTo(300, ry + 12).stroke();
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark).text('Date:', 330, ry, { width: 46 });
+      doc.lineWidth(0.8).strokeColor('#9CA3AF').moveTo(382, ry + 12).lineTo(w - 50, ry + 12).stroke();
+      return ry + 30;
+    },
+    render(doc, ctx, y) {
+      const w = doc.page.width;
+      const s = ctx.student || {};
+      const days = Number(ctx.duration || s.duration || 28);
+      const hours = Math.round((days * 120) / 28);
+      const name = s.firstName ? `${s.firstName} ${s.lastName}` : 'the student';
+      const enrolled = s.enrolledAt ? new Date(s.enrolledAt) : null;
+      const fmt = (d) => d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const period = enrolled
+        ? `${fmt(enrolled)} – ${fmt(new Date(enrolled.getTime() + (days - 1) * 86400000))}`
+        : '';
+
+      // Recipient
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark).text('To,', 50, y, { width: w - 100 });
+      doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.ink);
+      doc.text('The Internship In-Charge,', 50, doc.y + 3, { width: w - 100 });
+      doc.text(companyName(), 50, doc.y + 2, { width: w - 100 });
+      doc.text(companyAddress(), 50, doc.y + 2, { width: w - 100 });
+      y = doc.y + 12;
+
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(GREEN.dark)
+        .text('Subject: Grant of permission to undergo internship training.', 50, y, { width: w - 100 });
+      y = doc.y + 10;
+      doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body).text('Dear Sir / Madam,', 50, y);
+      y = doc.y + 8;
+
+      doc.text(`This is to certify that ${name}, a bonafide student of our institution, has been permitted to undergo the internship program "${ctx.title || 'the internship program'}" offered by ${companyName()} for a continuous period of ${days} days (${hours} working hours) as a part of the academic curriculum / training requirement of the course.`, 50, y, { width: w - 100, lineGap: 2 });
+      y = doc.y + 8;
+      doc.text(`The student fulfils all the eligibility criteria prescribed by our institution and there is no objection from our side to his / her participation in the said program, which will be completed in online / remote mode${period ? ` during the period ${period}` : ''}. The student shall abide by the rules and regulations of the program throughout the training period.`, 50, y, { width: w - 100, lineGap: 2 });
+      y = doc.y + 8;
+
+      y = sectionBar(doc, 'STUDENT DETAILS', y);
       y = fieldGrid(doc, [
-        ['Full Name', 'Program / Track'],
-        ['Reference / Certificate ID', 'Institution / College'],
-        ['Email', 'Phone'],
+        ['Student Name', 'Roll No. / Reg. No.', name === 'the student' ? '' : name, s.rollNo || s.regNo || ''],
+        ['Course / Year', 'Program / Track', [s.course ? String(s.course).toUpperCase() : '', s.year].filter(Boolean).join(' - '), ctx.title || ''],
+        ['Internship Duration', 'Internship Period', `${days} Days / ${hours} Hours`, period],
       ], y);
 
-      y = sectionBar(doc, 'SIGNATURE', y + 16);
-      y = signatureBlock(doc, y);
-      return y;
+      y = sectionBar(doc, 'CONCLUSION', y + 6);
+      doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body)
+        .text(`In view of the above, you are requested to allow the student to complete the internship program as scheduled. Any communication in this regard may be addressed to the undersigned.`, 50, y, { width: w - 100, lineGap: 2 });
+      y = doc.y + 6;
+      doc.text('Thanking you,', 50, y, { width: w - 100 });
+
+      // Authorisation: college stamp + verification QR + one signature line
+      // (HOD or Principal or Internship Nodal Officer — any one of them signs)
+      y = sectionBar(doc, 'AUTHORISATION BY THE INSTITUTION', doc.y + 8);
+      const bw = INNER_W();
+      const bh = 116;
+      doc.lineWidth(1).strokeColor(GREEN.stroke).roundedRect(L, y, bw, bh, 6).stroke();
+
+      const sx = L + 14, sy = y + 12, ss = 74;
+      doc.save();
+      doc.lineWidth(0.9).strokeColor('#9CA3AF').dash(4, { space: 3 });
+      doc.roundedRect(sx, sy, ss, ss, 4).stroke();
+      doc.restore();
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(GREEN.gray)
+        .text('COLLEGE STAMP / SEAL', sx - 8, sy + ss + 5, { width: ss + 16, align: 'center' });
+
+      const qr = ctx.qr;
+      const qx = sx + ss + 14, qy = sy + 4;
+      if (qr) {
+        doc.roundedRect(qx, qy, 54, 54, 6).fill('#ffffff').stroke(GREEN.stroke);
+        doc.image(qr, qx + 5, qy + 5, { width: 44 });
+        doc.font('Helvetica').fontSize(6.5).fillColor(GREEN.gray)
+          .text('Scan to verify', qx - 6, qy + 58, { width: 66, align: 'center' });
+      }
+
+      const lx = sx + ss + 84;
+      const lw = L + bw - 14 - lx;
+      const ly = y + 42;
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GREEN.dark)
+        .text('SIGNATURE OF HOD / PRINCIPAL / INTERNSHIP NODAL OFFICER', lx, ly, { width: lw });
+      doc.lineWidth(0.8).strokeColor('#9CA3AF').moveTo(lx, ly + 22).lineTo(lx + lw, ly + 22).stroke();
+      return y + bh + 6;
     },
   },
 
@@ -286,8 +369,8 @@ const FORMS = {
     filename: 'IQI-Feedback-Form.pdf',
     title: 'FEEDBACK FORM',
     subtitle: 'Help us improve — share your honest experience of the internship program',
-    render(doc) {
-      let y = sectionBar(doc, 'INTERNSHIP DETAILS', 165);
+    render(doc, ctx, y) {
+      y = sectionBar(doc, 'INTERNSHIP DETAILS', y);
       y = fieldGrid(doc, [
         ['Full Name (optional)', 'Program / Track'],
         ['Reference / Certificate ID', 'Duration (Days)'],
@@ -318,8 +401,8 @@ const FORMS = {
     filename: 'IQI-Internship-Undertaking.pdf',
     title: 'INTERNSHIP UNDERTAKING',
     subtitle: 'Self-declaration & Code of Conduct',
-    render(doc) {
-      let y = sectionBar(doc, 'DECLARATION', 165);
+    render(doc, ctx, y) {
+      y = sectionBar(doc, 'DECLARATION', y);
       const paras = [
         'I hereby declare that all information furnished by me in connection with the internship program — including my educational qualifications, contact details and institutional records — is true, complete and correct to the best of my knowledge.',
         'I undertake to complete all learning modules, quizzes, assessments and the final examination of the program honestly, without any form of malpractice, impersonation or unfair means.',
@@ -347,18 +430,35 @@ const FORMS = {
 // Accept a couple of friendly aliases for the documented form names
 const ALIASES = { declaration: 'undertaking', feedbackform: 'feedback', consentform: 'consent' };
 
+// ===================== RENDER ENTRY POINT =====================
+// Streams a form PDF to `res`. `ctx` may carry { student, title, duration, qr }
+// to pre-fill the letter — pass {} for a blank public template.
+// Returns { y } (bottom of the last drawn element) or false for an unknown key.
+async function streamForm(res, key, ctx = {}) {
+  const k = String(key || '').toLowerCase();
+  const form = FORMS[ALIASES[k] || k];
+  if (!form) return false;
+
+  const qr = 'qr' in ctx ? ctx.qr : await makeVerifyQr();
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename=${form.filename}`);
+  doc.pipe(res);
+  drawWatermark(doc, 'IQINTERN');
+  const body = { ...ctx, qr };
+  const y = form.header ? form.header(doc, body) : defaultHeader(doc, form, qr);
+  const finalY = form.render(doc, body, y);
+  drawFooter(doc);
+  doc.end();
+  return { y: finalY };
+}
+
 // ===================== PUBLIC ROUTE =====================
 router.get('/:type', async (req, res) => {
   const key = String(req.params.type || '').toLowerCase();
-  const form = FORMS[ALIASES[key] || key];
-  if (!form) return res.status(404).json({ error: 'Unknown form type' });
-
   try {
-    const qr = await makeVerifyQr();
-    const doc = startForm(res, form.filename, form.title, form.subtitle, qr);
-    form.render(doc);
-    drawFooter(doc);
-    doc.end();
+    const out = await streamForm(res, key, {});
+    if (out === false) return res.status(404).json({ error: 'Unknown form type' });
   } catch (err) {
     console.error(`Form generation failed (${key}):`, err.message);
     if (res.headersSent) res.end();
@@ -368,3 +468,5 @@ router.get('/:type', async (req, res) => {
 
 module.exports = router;
 module.exports.FORMS = FORMS;
+module.exports.streamForm = streamForm;
+module.exports.ALLOWED_TYPES = Object.keys(FORMS).concat(Object.keys(ALIASES));

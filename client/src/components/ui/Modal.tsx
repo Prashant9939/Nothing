@@ -41,7 +41,7 @@ export default function Modal({ open, onClose, title, maxWidth = 'max-w-md', chi
           <button
             onClick={onClose}
             aria-label="Close dialog"
-            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
           >
             <X size={16} />
           </button>

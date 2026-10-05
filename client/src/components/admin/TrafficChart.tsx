@@ -75,9 +75,9 @@ export default function TrafficChart({ data, hourly }: { data: AnalyticsBucket[]
     <div ref={wrapRef} className="relative w-full">
       {isEmpty ? (
         <div className="h-[300px] flex flex-col items-center justify-center text-center px-6">
-          <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mb-3"><BarChart3 className="w-6 h-6" /></div>
+          <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center mb-3"><BarChart3 className="w-6 h-6" /></div>
           <p className="text-sm font-medium text-slate-600">No traffic recorded yet</p>
-          <p className="text-xs text-slate-400 mt-1">Visits, page views and clicks will show up here as people browse the site.</p>
+          <p className="text-xs text-slate-500 mt-1">Visits, page views and clicks will show up here as people browse the site.</p>
         </div>
       ) : (
         <>

@@ -47,10 +47,10 @@ export default function SearchableSelect({ id, options, value, onChange, placeho
   return (
     <div ref={ref} className="relative">
       <button type="button" id={id} disabled={disabled} onClick={() => !disabled && setOpen(!open)}
-        className={`w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-left text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 disabled:opacity-50 disabled:cursor-not-allowed ${open ? 'ring-2 ring-orange-500/20 border-orange-400' : ''} ${!selected ? 'text-gray-400' : 'text-gray-900'}`}>
+        className={`w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-left text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 disabled:opacity-50 disabled:cursor-not-allowed ${open ? 'ring-2 ring-orange-500/20 border-orange-400' : ''} ${!selected ? 'text-gray-500' : 'text-gray-900'}`}>
         <span className="flex items-center justify-between">
           <span className="truncate">{selected ? selected.label : placeholder}</span>
-          <svg className={`w-4 h-4 text-gray-400 shrink-0 ml-2 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className={`w-4 h-4 text-gray-500 shrink-0 ml-2 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </span>
@@ -65,14 +65,14 @@ export default function SearchableSelect({ id, options, value, onChange, placeho
           </div>
           <div className="max-h-56 overflow-y-auto">
             {filtered.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-gray-400">No results found</div>
+              <div className="px-4 py-3 text-sm text-gray-500">No results found</div>
             ) : (
               filtered.map((opt) => (
                 <button key={opt.value} type="button"
                   onClick={() => { onChange(opt.value); setOpen(false); setQuery(''); }}
                   className={`w-full text-left px-4 py-2.5 text-sm hover:bg-orange-50 transition-colors flex items-center justify-between ${opt.value === value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-700'}`}>
                   <span className="truncate">{opt.label}</span>
-                  {opt.sub && <span className="text-xs text-gray-400 ml-2 shrink-0">{opt.sub}</span>}
+                  {opt.sub && <span className="text-xs text-gray-500 ml-2 shrink-0">{opt.sub}</span>}
                 </button>
               ))
             )}

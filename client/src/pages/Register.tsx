@@ -129,10 +129,10 @@ export default function Register() {
               <div className={`flex-1 h-0.5 mx-1 sm:mx-3 mt-[15px] rounded-full transition-all duration-500 ${step > i ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-gray-200/60'}`} />
             )}
             <div className="flex flex-col items-center gap-1 shrink-0 w-14 sm:w-20">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-orange-500/30 ring-4 ring-orange-100' : 'bg-gray-200/70 text-gray-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-orange-500/30 ring-4 ring-orange-100' : 'bg-gray-200/70 text-gray-500'}`}>
                 {step > i + 1 ? <CheckIcon size={16} /> : i + 1}
               </div>
-              <span className={`text-[11px] font-medium transition-colors ${step === i + 1 ? 'text-orange-600' : step > i + 1 ? 'text-green-600' : 'text-gray-400'}`}>
+              <span className={`text-[11px] font-medium transition-colors ${step === i + 1 ? 'text-orange-600' : step > i + 1 ? 'text-green-600' : 'text-gray-500'}`}>
                 {label}
               </span>
             </div>
@@ -216,7 +216,7 @@ export default function Register() {
             <input type="text" value={form.college} onChange={(e) => setForm({ ...form, college: e.target.value })} placeholder="Enter your college name *" required className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all" />
           )}
           {!form.university && (
-            <input type="text" disabled placeholder="Select university first *" className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-400 placeholder-gray-400 transition-all opacity-50 cursor-not-allowed" />
+            <input type="text" disabled placeholder="Select university first *" className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-500 placeholder-gray-400 transition-all opacity-50 cursor-not-allowed" />
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <select value={form.course} onChange={(e) => updateField('course', e.target.value)} required className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all">
@@ -293,7 +293,7 @@ export default function Register() {
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Security</p>
           <div className="relative">
             <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={(e) => updateField('password', e.target.value)} placeholder="Create password *" required minLength={6} className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all pr-10" />
-            <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+            <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 transition-colors">
               {showPassword ? (
                 <EyeOffIcon size={20} />
               ) : (

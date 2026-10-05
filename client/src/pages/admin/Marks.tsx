@@ -108,13 +108,13 @@ export default function AdminMarks() {
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="p-8 text-center text-gray-400">No certificates found.</td></tr>
+                <tr><td colSpan={7} className="p-8 text-center text-gray-500">No certificates found.</td></tr>
               )}
               {filtered.map((c) => (
                 <tr key={c.id} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
                   <td className="p-4">
                     <p className="font-medium text-gray-900">{c.firstName} {c.lastName}</p>
-                    <p className="text-xs text-gray-400">{c.email}</p>
+                    <p className="text-xs text-gray-500">{c.email}</p>
                   </td>
                   <td className="p-4 text-gray-500">{c.internshipTitle}</td>
                   <td className="p-4 font-mono text-xs text-gray-600">{c.certificateId}</td>

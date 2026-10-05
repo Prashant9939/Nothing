@@ -160,7 +160,7 @@ export default function EditProfile() {
   const metaRows = [
     { icon: <Landmark size={15} />, label: 'University', value: form.university === 'other' ? 'Other' : (form.university || '') },
     { icon: <GraduationCap size={15} />, label: 'College', value: form.college },
-    { icon: <BookOpen size={15} />, label: 'Course', value: form.course ? `${form.course}${form.year ? ` · Year ${form.year}` : ''}` : '' },
+    { icon: <BookOpen size={15} />, label: 'Course', value: form.course ? `${form.course.toUpperCase()}${form.year ? ` · Year ${form.year}` : ''}` : '' },
     { icon: <CalendarDays size={15} />, label: 'Joined', value: user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '' },
   ];
 
@@ -182,7 +182,7 @@ export default function EditProfile() {
             </div>
             <div className="min-w-0">
               <p className="truncate text-base font-bold text-white">{user?.firstName} {user?.lastName}</p>
-              <p className="truncate text-xs text-white/50">{form.email || user?.email}</p>
+              <p className="truncate text-xs text-white/65">{form.email || user?.email}</p>
             </div>
           </div>
         </div>
@@ -201,10 +201,10 @@ export default function EditProfile() {
           <div className="space-y-3.5 border-t border-slate-100 pt-4">
             {metaRows.map((row) => (
               <div key={row.label} className="flex items-start gap-3">
-                <span className="mt-0.5 text-slate-400" aria-hidden="true">{row.icon}</span>
+                <span className="mt-0.5 text-slate-500" aria-hidden="true">{row.icon}</span>
                 <div className="min-w-0">
-                  <p className="text-xs text-slate-400">{row.label}</p>
-                  <p className="truncate text-sm font-medium text-slate-700">{row.value || <span className="font-normal text-slate-400">Not provided</span>}</p>
+                  <p className="text-xs text-slate-500">{row.label}</p>
+                  <p className="truncate text-sm font-medium text-slate-700">{row.value || <span className="font-normal text-slate-500">Not provided</span>}</p>
                 </div>
               </div>
             ))}
@@ -238,7 +238,7 @@ export default function EditProfile() {
                 placeholder="Add your phone number"
                 autoFocus
               />
-              <p className="text-xs text-slate-400">Name and email cannot be changed.</p>
+              <p className="text-xs text-slate-500">Name and email cannot be changed.</p>
             </form>
           ) : (
             <ViewRows rows={[
@@ -301,7 +301,7 @@ export default function EditProfile() {
             <ViewRows rows={[
               { label: 'University', value: form.university === 'other' ? 'Other' : form.university },
               { label: 'College', value: form.college },
-              { label: 'Course', value: form.course },
+              { label: 'Course', value: form.course.toUpperCase() },
               { label: 'Year', value: form.year },
             ]} />
           )}
@@ -383,7 +383,7 @@ function SectionCard({ id, icon, title, subtitle, action, error, children }: {
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">{icon}</div>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-            <p className="text-xs text-slate-400">{subtitle}</p>
+            <p className="text-xs text-slate-500">{subtitle}</p>
           </div>
         </div>
         {action && <div className="shrink-0">{action}</div>}
@@ -404,9 +404,9 @@ function ViewRows({ rows }: { rows: { label: string; value: string }[] }) {
     <dl className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
       {rows.map((r) => (
         <div key={r.label}>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">{r.label}</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{r.label}</dt>
           <dd className="mt-1 text-sm font-medium text-slate-900">
-            {r.value || <span className="font-normal text-slate-400">Not provided</span>}
+            {r.value || <span className="font-normal text-slate-500">Not provided</span>}
           </dd>
         </div>
       ))}

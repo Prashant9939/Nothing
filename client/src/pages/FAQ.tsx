@@ -23,7 +23,7 @@ export default function FAQ() {
             <details key={i} className="bg-white border border-gray-200 rounded-lg group reveal reveal-pop" style={{ transitionDelay: `${200 + i * 70}ms` }}>
               <summary className="p-4 cursor-pointer font-semibold text-sm hover:bg-gray-50 transition-colors list-none flex justify-between items-center">
                 {faq.q}
-                <span className="text-gray-400 group-open:rotate-45 transition-transform">+</span>
+                <span className="text-gray-500 group-open:rotate-45 transition-transform">+</span>
               </summary>
               <div className="px-4 pb-4 text-sm text-gray-600">{faq.a}</div>
             </details>

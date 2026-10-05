@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const { authenticateToken } = require('../middleware/auth');
-const { passwordPolicyError } = require('../lib/passwordPolicy');
+const { passwordPolicyError, BCRYPT_COST } = require('../lib/passwordPolicy');
 const { newReceiptNumber } = require('../lib/docNumbers');
 const sessions = require('../lib/sessions');
 const rzp = require('../lib/razorpay');
@@ -65,6 +65,7 @@ async function hasCompletedPayment(enrollmentId, userId) {
 router.get('/profile', authenticateToken, async (req, res) => {
   const user = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE id = ?', req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.course) user.course = user.course.toUpperCase();
   res.json({ user });
 });
 
@@ -76,6 +77,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
   await db.run('UPDATE users SET firstName = ?, lastName = ?, phone = ?, university = ?, college = ?, course = ?, year = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', firstName, lastName, phone, university, college, course, year, req.user.id);
 
   const updated = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role FROM users WHERE id = ?', req.user.id);
+  if (updated && updated.course) updated.course = updated.course.toUpperCase();
   res.json({ message: 'Profile updated', user: updated });
 });
 
@@ -94,7 +96,7 @@ router.put('/change-password', authenticateToken, async (req, res) => {
   const valid = await bcrypt.compare(currentPassword, user.password);
   if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
 
-  const salt = await bcrypt.genSalt(12);
+  const salt = await bcrypt.genSalt(BCRYPT_COST);
   const hashed = await bcrypt.hash(newPassword, salt);
   await db.run('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', hashed, req.user.id);
 
@@ -145,7 +147,68 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       )
   `, req.user.id);
 
-  res.json({ enrollments, payments, exams, certificates });
+  // Profile completeness over the five fields a student can edit (mirrors
+  // EditProfile). Missing keys are surfaced so the dashboard can prompt.
+  const profileFields = ['phone', 'university', 'college', 'course', 'year'];
+  const profileMissing = profileFields.filter((f) => !req.user[f] || !String(req.user[f]).trim());
+  const profileCompletion = {
+    pct: Math.round(((profileFields.length - profileMissing.length) / profileFields.length) * 100),
+    missing: profileMissing,
+  };
+
+  // Earliest upcoming (or running) exam attempt for the countdown card.
+  const nextExamRow = exams
+    .filter((e) => (e.status === 'scheduled' || e.status === 'in_progress') && e.scheduledAt)
+    .sort((a, b) => String(a.scheduledAt).localeCompare(String(b.scheduledAt)))[0]
+    || exams.filter((e) => e.status === 'in_progress')[0]
+    || null;
+  const nextExam = nextExamRow ? {
+    id: nextExamRow.id,
+    enrollmentId: nextExamRow.enrollmentId,
+    internshipId: nextExamRow.internshipId,
+    internshipTitle: nextExamRow.internshipTitle,
+    scheduledAt: nextExamRow.scheduledAt,
+    status: nextExamRow.status,
+    duration: nextExamRow.duration,
+    totalQuestions: nextExamRow.totalQuestions,
+    passingMarks: nextExamRow.passingMarks,
+    courseCompleted: nextExamRow.courseCompleted,
+    courseProgress: nextExamRow.courseProgress || 0,
+  } : null;
+
+  // Days remaining on the active enrollment (ISO expiresAt from payments.js;
+  // fall back to the plain UTC sweep format if ever written that way).
+  const activeEnrollment = enrollments.find((e) => e.status === 'active') || null;
+  let daysLeft = null;
+  if (activeEnrollment?.expiresAt) {
+    const raw = String(activeEnrollment.expiresAt);
+    const expires = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+      ? new Date(`${raw.replace(' ', 'T')}Z`)
+      : new Date(raw);
+    if (!Number.isNaN(expires.getTime())) {
+      daysLeft = Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 86400000));
+    }
+  }
+
+  // Latest announcements + the student's global unread count (same shape the
+  // bell uses, capped so the dashboard stays one small query).
+  const announcements = (await db.all(`
+    SELECT a.id, a.title, a.message, a.createdAt,
+      EXISTS(SELECT 1 FROM announcement_reads r WHERE r.announcementId = a.id AND r.userId = ?) AS isRead
+    FROM announcements a
+    ORDER BY a.createdAt DESC, a.id DESC
+    LIMIT 3
+  `, req.user.id)).map((a) => ({ id: a.id, title: a.title, message: a.message, createdAt: a.createdAt, read: !!a.isRead }));
+  const announcementsUnread = (await db.get(`
+    SELECT COUNT(*) as count FROM announcements a
+    WHERE NOT EXISTS (SELECT 1 FROM announcement_reads r WHERE r.announcementId = a.id AND r.userId = ?)
+  `, req.user.id)).count;
+  const announcementsTotal = (await db.get('SELECT COUNT(*) as count FROM announcements')).count;
+
+  res.json({
+    enrollments, payments, exams, certificates,
+    profileCompletion, nextExam, daysLeft, announcements, announcementsUnread, announcementsTotal,
+  });
 });
 
 // ===================== ENROLLMENT STATUS CHECK =====================

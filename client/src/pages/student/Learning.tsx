@@ -395,9 +395,9 @@ function ModuleContentView({
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <BookOpen className="h-4 w-4 shrink-0 text-slate-700" />
               <h3 className="text-sm font-semibold text-slate-900">Reading Material</h3>
-              <span className="text-xs text-slate-400">
-                {module.contentSections?.length || 0} section{(module.contentSections?.length || 0) === 1 ? '' : 's'} for this topic
-              </span>
+          <span className="text-xs text-slate-500">
+            {module.contentSections?.length || 0} section{(module.contentSections?.length || 0) === 1 ? '' : 's'} for this topic
+          </span>
             </div>
 
             {module.contentSections && module.contentSections.length > 0 ? (

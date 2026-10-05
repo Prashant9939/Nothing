@@ -152,7 +152,7 @@ export default function AdminAnnouncements() {
           </div>
 
           {items.length === 0 ? (
-            <p className="p-10 text-sm text-gray-400 text-center">
+            <p className="p-10 text-sm text-gray-500 text-center">
               No announcements yet. Publish one to notify all students.
             </p>
           ) : (
@@ -167,7 +167,7 @@ export default function AdminAnnouncements() {
                           {a.readCount || 0} read{a.readCount === 1 ? '' : 's'}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5">{formatDate(a.createdAt)}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{formatDate(a.createdAt)}</p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <button

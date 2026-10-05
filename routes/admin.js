@@ -6,7 +6,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { completePayment, expirePendingPayments } = require('../lib/payments');
 const { refreshBrand } = require('../lib/documentBrand');
 const { streamAnswerKey } = require('../lib/answerKeyPdf');
-const { passwordPolicyError } = require('../lib/passwordPolicy');
+const { passwordPolicyError, BCRYPT_COST } = require('../lib/passwordPolicy');
 
 const router = express.Router();
 
@@ -242,7 +242,7 @@ router.get('/internships/:id/answer-key', authenticateToken, adminOnly, async (r
 // ===================== USERS MANAGEMENT =====================
 router.get('/users', authenticateToken, adminOnly, async (req, res) => {
   const users = await db.all('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users ORDER BY createdAt DESC');
-  res.json({ users });
+  res.json({ users: users.map((u) => (u.course ? { ...u, course: u.course.toUpperCase() } : u)) });
 });
 
 // Register a student on behalf of the admin, with a chosen registration date
@@ -279,7 +279,7 @@ router.post('/users', authenticateToken, adminOnly, async (req, res) => {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
-    const hashedPassword = bcrypt.hashSync(password, bcrypt.genSaltSync(12));
+    const hashedPassword = bcrypt.hashSync(password, bcrypt.genSaltSync(BCRYPT_COST));
 
     const result = await db.run(`
       INSERT INTO users (firstName, lastName, email, phone, university, college, course, year,
@@ -302,6 +302,7 @@ router.post('/users', authenticateToken, adminOnly, async (req, res) => {
 router.get('/users/:id', authenticateToken, adminOnly, async (req, res) => {
   const user = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE id = ?', req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.course) user.course = user.course.toUpperCase();
 
   const enrollments = await db.all(`
     SELECT e.*, i.title as internshipTitle

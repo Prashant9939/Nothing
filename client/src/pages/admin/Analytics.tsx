@@ -20,7 +20,7 @@ const rangeCopy: Record<Range, string> = {
 };
 
 function Delta({ cur, prev }: { cur: number; prev: number }) {
-  if (prev === 0 && cur === 0) return <span className="text-[11px] text-slate-400">—</span>;
+  if (prev === 0 && cur === 0) return <span className="text-[11px] text-slate-500">—</span>;
   if (prev === 0) return <span className="text-[11px] font-semibold text-emerald-600">new</span>;
   const pct = Math.round(((cur - prev) / prev) * 100);
   const up = pct >= 0;
@@ -77,9 +77,9 @@ export default function AdminAnalytics() {
         <div className="absolute bottom-0 left-0 w-60 h-60 bg-white/3 rounded-full translate-y-1/2 -translate-x-1/4 blur-3xl" />
         <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-white/50 text-xs font-medium mb-1">Admin Panel</p>
+            <p className="text-white/65 text-xs font-medium mb-1">Admin Panel</p>
             <h1 className="text-xl sm:text-2xl font-bold drop-shadow-lg">Site Analytics</h1>
-            <p className="text-white/50 text-sm mt-1">{rangeCopy[range]}</p>
+            <p className="text-white/65 text-sm mt-1">{rangeCopy[range]}</p>
           </div>
           <div className="flex items-center gap-1 p-1 bg-white/8 border border-white/10 rounded-xl backdrop-blur-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
             {RANGES.map((r) => (
@@ -139,7 +139,7 @@ export default function AdminAnalytics() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-semibold text-gray-900 text-sm">Traffic Overview</h3>
-                <p className="text-xs text-gray-400 mt-0.5">{rangeCopy[range]} · compared with the previous period</p>
+                <p className="text-xs text-gray-500 mt-0.5">{rangeCopy[range]} · compared with the previous period</p>
               </div>
             </div>
             <TrafficChart data={series} hourly={data.hourly} />
@@ -150,17 +150,17 @@ export default function AdminAnalytics() {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.06)] overflow-hidden">
               <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900 text-sm">Top Pages</h3>
-                <span className="text-xs text-gray-400">{topPages.length} pages</span>
+                <span className="text-xs text-gray-500">{topPages.length} pages</span>
               </div>
               <div className="px-5 py-2 divide-y divide-gray-50">
                 {topPages.length === 0 && (
-                  <p className="py-6 text-center text-xs text-gray-400">No page views recorded in this period.</p>
+                  <p className="py-6 text-center text-xs text-gray-500">No page views recorded in this period.</p>
                 )}
                 {topPages.map((p) => (
                   <div key={p.path} className="py-3">
                     <div className="flex items-center justify-between gap-3 mb-1.5">
                       <span className="text-xs font-mono text-slate-600 truncate max-w-[55%]">{p.path}</span>
-                      <span className="text-[11px] text-gray-400 shrink-0">{p.views} views · {p.clicks} clicks</span>
+                      <span className="text-[11px] text-gray-500 shrink-0">{p.views} views · {p.clicks} clicks</span>
                     </div>
                     <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div
@@ -176,7 +176,7 @@ export default function AdminAnalytics() {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.06)] overflow-hidden">
               <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900 text-sm">Conversions</h3>
-                <span className="text-xs text-gray-400">{RANGES.find((r) => r.id === range)?.label}</span>
+                <span className="text-xs text-gray-500">{RANGES.find((r) => r.id === range)?.label}</span>
               </div>
               <div className="p-5 space-y-5">
                 <div className="grid grid-cols-3 gap-3">
@@ -208,7 +208,7 @@ export default function AdminAnalytics() {
                       />
                     ))}
                   </div>
-                  <div className="flex justify-between text-[10px] text-gray-400 mt-1.5">
+                  <div className="flex justify-between text-[10px] text-gray-500 mt-1.5">
                     <span>{data.hourly ? series[0]?.bucket.slice(11, 16) : series[0]?.bucket}</span>
                     <span>{data.hourly ? 'now' : 'today'}</span>
                   </div>

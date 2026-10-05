@@ -177,7 +177,7 @@ export default function Payment() {
             <div className="mb-3 flex justify-between items-center"><span className="text-sm text-slate-500">Receipt No.</span><span className="font-mono text-sm text-slate-900">{payment.receiptNumber}</span></div>
             <div className="flex justify-between items-center"><span className="text-sm text-slate-500">Program</span><span className="text-sm font-medium text-slate-900">{payment.internshipTitle}</span></div>
           </div>
-          <p className="mb-4 text-sm text-slate-400">Redirecting to learning page in {countdown} seconds...</p>
+          <p className="mb-4 text-sm text-slate-500">Redirecting to learning page in {countdown} seconds...</p>
           <Button className="w-full" onClick={() => navigate('/student/learning')}>Go to Learning Now</Button>
         </div>
       </div>
@@ -279,7 +279,7 @@ export default function Payment() {
             <Button className="w-full" loading={processing} onClick={handlePay} icon={!processing ? <ShieldCheck size={15} /> : undefined}>
               {processing ? 'Processing...' : `Pay ₹${payment.amount.toLocaleString()}`}
             </Button>
-            <p className="mt-4 text-center text-xs text-slate-400">Payments are processed securely by Razorpay. Your payment details are never stored on our servers.</p>
+            <p className="mt-4 text-center text-xs text-slate-500">Payments are processed securely by Razorpay. Your payment details are never stored on our servers.</p>
           </div>
         </div>
       </div>

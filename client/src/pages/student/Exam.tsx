@@ -302,7 +302,7 @@ export default function StudentExam() {
                     answers[currentQ] === i ? 'border-emerald-500 bg-emerald-50 text-slate-900 font-medium ring-1 ring-emerald-500/40' : 'border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
                   }`}
                 >
-                  <span className={`mr-3 font-medium ${answers[currentQ] === i ? 'text-emerald-600' : 'text-slate-400'}`}>{String.fromCharCode(65 + i)}.</span>
+                  <span className={`mr-3 font-medium ${answers[currentQ] === i ? 'text-emerald-600' : 'text-slate-500'}`}>{String.fromCharCode(65 + i)}.</span>
                   {opt}
                 </button>
               ))}

@@ -42,7 +42,7 @@ export default function ModuleCard({ module, isCompleted, isLocked, onClick }: M
             isCompleted
               ? 'border border-emerald-200 bg-emerald-100 text-emerald-700'
               : isLocked
-                ? 'border border-slate-200 bg-slate-100 text-slate-400'
+                ? 'border border-slate-200 bg-slate-100 text-slate-500'
                 : 'border border-slate-200 bg-slate-100 text-slate-700'
           }`}>
             {isCompleted ? <CheckCircle className="h-6 w-6" /> : isLocked ? <Lock className="h-5 w-5" /> : module.moduleOrder}
@@ -69,12 +69,12 @@ export default function ModuleCard({ module, isCompleted, isLocked, onClick }: M
               <span className={`rounded border px-2 py-0.5 text-[10px] font-medium ${getDifficultyColor(module.difficulty)}`}>
                 {module.difficulty}
               </span>
-              <span className="flex items-center gap-1 text-[10px] text-slate-400">
+              <span className="flex items-center gap-1 text-[10px] text-slate-500">
                 <Clock className="h-3 w-3" />
                 {module.durationMinutes} min
               </span>
               {module.contentSections && module.contentSections.length > 0 && (
-                <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                <span className="flex items-center gap-1 text-[10px] text-slate-500">
                   <BookOpen className="h-3 w-3" />
                   {module.contentSections.length} reading sections
                 </span>

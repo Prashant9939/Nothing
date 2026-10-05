@@ -16,7 +16,7 @@ const inputCls =
 
 const saveBtnCls = (enabled: boolean) =>
   `px-5 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-colors disabled:opacity-50 ${
-    enabled ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-gray-100 text-gray-400'
+    enabled ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-gray-100 text-gray-500'
   }`;
 
 export default function AdminSettings() {
@@ -199,7 +199,7 @@ export default function AdminSettings() {
               className={inputCls}
               placeholder="U85500BR2025PTC076013"
             />
-            <p className="text-xs text-gray-400 mt-2">Printed as “CIN - …” on every document footer. Leave blank to hide it.</p>
+            <p className="text-xs text-gray-500 mt-2">Printed as “CIN - …” on every document footer. Leave blank to hide it.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Director Name</label>
@@ -210,7 +210,7 @@ export default function AdminSettings() {
               className={inputCls}
               placeholder="Prashant Kumar"
             />
-            <p className="text-xs text-gray-400 mt-2">Shown on offer letters and above the CEO designation on certificates.</p>
+            <p className="text-xs text-gray-500 mt-2">Shown on offer letters and above the CEO designation on certificates.</p>
           </div>
         </div>
       </section>
@@ -242,7 +242,7 @@ export default function AdminSettings() {
             className={inputCls}
             placeholder="https://your-domain.example"
           />
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-xs text-gray-500 mt-2">
             Leave blank to use the default from <span className="font-mono">SITE_URL</span> / localhost. QR preview:{' '}
             <span className="font-mono text-gray-600 break-all">{verifyBase}/certification?id=…</span>
           </p>

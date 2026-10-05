@@ -125,12 +125,12 @@ export default function AdminIssues() {
         {visible.length === 0 ? (
           <div className="p-14 flex flex-col items-center text-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
-              <InboxIcon size={22} className="text-gray-400" />
+              <InboxIcon size={22} className="text-gray-500" />
             </div>
             <p className="text-sm font-medium text-gray-700">
               {filter === 'new' ? 'No new messages' : 'No messages yet'}
             </p>
-            <p className="text-xs text-gray-400 max-w-xs">
+            <p className="text-xs text-gray-500 max-w-xs">
               Messages submitted through the Contact page will appear here.
             </p>
           </div>
@@ -168,7 +168,7 @@ export default function AdminIssues() {
                           {m.phone}
                         </a>
                       )}
-                      <span className="text-xs text-gray-400">{formatDate(m.createdAt)}</span>
+                      <span className="text-xs text-gray-500">{formatDate(m.createdAt)}</span>
                     </div>
                   </div>
 

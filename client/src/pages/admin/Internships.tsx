@@ -210,7 +210,7 @@ export default function AdminInternships() {
                           onClick={() => setPriceEdit({ id: i.id, value: String(i.price) })}
                           title="Edit price"
                           aria-label={`Edit price of ${i.title}`}
-                          className="p-1 rounded-md text-gray-400 opacity-0 transition-all hover:bg-orange-50 hover:text-orange-600 focus:opacity-100 group-hover:opacity-100"
+                          className="p-1 rounded-md text-gray-500 opacity-0 transition-all hover:bg-orange-50 hover:text-orange-600 focus:opacity-100 group-hover:opacity-100"
                         >
                           <Pencil size={13} />
                         </button>

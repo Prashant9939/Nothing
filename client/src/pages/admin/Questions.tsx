@@ -296,7 +296,7 @@ export default function AdminQuestions() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-mono text-gray-400">#{q.id}</span>
+                      <span className="text-xs font-mono text-gray-500">#{q.id}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${q.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {q.isActive ? 'Active' : 'Inactive'}
                       </span>
@@ -311,14 +311,14 @@ export default function AdminQuestions() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => setEditQ(q)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors text-xs">Edit</button>
+                    <button onClick={() => setEditQ(q)} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors text-xs">Edit</button>
                     {deleteConfirm === q.id ? (
                       <div className="flex gap-1">
                         <button onClick={() => handleDelete(q.id)} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium">Yes</button>
                         <button onClick={() => setDeleteConfirm(null)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-700">No</button>
                       </div>
                     ) : (
-                      <button onClick={() => setDeleteConfirm(q.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors text-xs">Del</button>
+                      <button onClick={() => setDeleteConfirm(q.id)} className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors text-xs">Del</button>
                     )}
                   </div>
                 </div>

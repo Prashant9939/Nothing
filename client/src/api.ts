@@ -134,6 +134,38 @@ interface AuthResponse {
   user: User;
 }
 
+export interface ProfileCompletion {
+  pct: number;
+  missing: string[];
+}
+
+export interface NextExam {
+  id: number;
+  enrollmentId: number;
+  internshipId: number;
+  internshipTitle?: string;
+  scheduledAt: string | null;
+  status: string;
+  duration: number;
+  totalQuestions: number;
+  passingMarks: number;
+  courseCompleted?: boolean;
+  courseProgress?: number;
+}
+
+export interface DashboardResponse {
+  enrollments: Enrollment[];
+  payments: Payment[];
+  exams: Exam[];
+  certificates: Certificate[];
+  profileCompletion: ProfileCompletion;
+  nextExam: NextExam | null;
+  daysLeft: number | null;
+  announcements: Announcement[];
+  announcementsUnread: number;
+  announcementsTotal: number;
+}
+
 export interface LearningModule {
   id: number;
   internshipId: number;
@@ -243,7 +275,7 @@ export const adminApi = {
 
 // Student API
 export const studentApi = {
-  getDashboard: () => api.get('/student/dashboard'),
+  getDashboard: () => api.get<DashboardResponse>('/student/dashboard'),
   getProfile: () => api.get('/student/profile'),
   updateProfile: (data: any) => api.put('/student/profile', data),
   changePassword: (data: { currentPassword: string; newPassword: string }) => api.put('/student/change-password', data),

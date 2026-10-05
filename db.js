@@ -10,6 +10,7 @@
 const { Pool, types } = require('pg');
 const { AsyncLocalStorage } = require('async_hooks');
 const bcrypt = require('bcryptjs');
+const { BCRYPT_COST } = require('./lib/passwordPolicy');
 
 // COUNT/SUM come back as int8/numeric strings by default — keep them numbers
 // so API responses and === 0 / comparisons behave exactly like SQLite did.
@@ -458,7 +459,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_PASSWORD) {
 }
 const adminExists = await db.get('SELECT id FROM users WHERE email = ?', adminEmail);
 if (!adminExists) {
-  const salt = bcrypt.genSaltSync(12);
+  const salt = bcrypt.genSaltSync(BCRYPT_COST);
   const hashedPassword = bcrypt.hashSync(adminPassword, salt);
   await db.run(`
     INSERT INTO users (firstName, lastName, email, phone, college, course, year, password, role)

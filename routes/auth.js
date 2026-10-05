@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
-const { passwordPolicyError } = require('../lib/passwordPolicy');
+const { passwordPolicyError, BCRYPT_COST } = require('../lib/passwordPolicy');
 const { DOC_COLUMNS } = require('../lib/docNumbers');
 const sessions = require('../lib/sessions');
 
@@ -13,7 +13,7 @@ const router = express.Router();
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 50,
   skipSuccessfulRequests: true,
   message: { error: 'Too many failed login attempts. Please try again after 15 minutes.' },
   standardHeaders: true,
@@ -38,7 +38,7 @@ const contactLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const DUMMY_HASH = bcrypt.hashSync('iqi-timing-equalizer', 12);
+const DUMMY_HASH = bcrypt.hashSync('iqi-timing-equalizer', BCRYPT_COST);
 
 const signToken = (user) => {
   return jwt.sign(
@@ -62,7 +62,7 @@ const publicUser = (u) => ({
   phone: u.phone,
   university: u.university || '',
   college: u.college || '',
-  course: u.course || '',
+  course: (u.course || '').toUpperCase(),
   year: u.year || '',
   gender: u.gender || '',
   dob: u.dob || '',
@@ -102,7 +102,7 @@ router.post('/register', async (req, res) => {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     const result = await db.run(`
       INSERT INTO users (firstName, lastName, email, phone, university, college, course, year,
@@ -235,7 +235,7 @@ router.put('/change-password', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Current password is incorrect' });
     }
 
-    const hashed = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(12));
+    const hashed = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(BCRYPT_COST));
     await db.run('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', hashed, req.user.id);
 
     // Password changed: every OTHER device's token dies immediately. The
@@ -314,7 +314,7 @@ router.post('/reset-password', recoveryLimiter, async (req, res) => {
       return res.status(404).json({ error: 'No account matches all of these details. Check each field and try again.' });
     }
 
-    const hashedPassword = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(12));
+    const hashedPassword = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(BCRYPT_COST));
     await db.run('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', hashedPassword, user.id);
 
     // Password reset (no authenticated session here): revoke EVERY issued
@@ -387,7 +387,7 @@ router.post('/verify-certificate', async (req, res) => {
         id: cert.certificateId,
         name: `${cert.firstName} ${cert.lastName}`,
         college: cert.college,
-        course: cert.course,
+        course: String(cert.course || '').toUpperCase(),
         program: cert.internshipTitle,
         duration: cert.duration,
         grade: cert.grade,
@@ -417,7 +417,7 @@ router.post('/verify-certificate', async (req, res) => {
         id: receipt.receiptNumber,
         name: `${receipt.firstName} ${receipt.lastName}`,
         college: receipt.college,
-        course: receipt.course,
+        course: String(receipt.course || '').toUpperCase(),
         program: receipt.internshipTitle,
         duration: receipt.duration,
         grade: null,
@@ -464,7 +464,7 @@ router.post('/verify-certificate', async (req, res) => {
           id: ref,
           name: `${row.firstName} ${row.lastName}`,
           college: row.college,
-          course: row.course,
+          course: String(row.course || '').toUpperCase(),
           program: row.internshipTitle,
           duration: row.duration,
           grade: row.grade ?? null,

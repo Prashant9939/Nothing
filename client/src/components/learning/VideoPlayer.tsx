@@ -16,7 +16,7 @@ export default function VideoPlayer({ url, title }: VideoPlayerProps) {
   if (!youtubeId) {
     return (
       <div className="bg-slate-100 border border-slate-200 rounded-2xl p-8 text-center">
-        <Video className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+        <Video className="w-12 h-12 text-slate-500 mx-auto mb-3" />
         <p className="break-words text-slate-600 text-sm font-medium">{title}</p>
         <a 
           href={url} 

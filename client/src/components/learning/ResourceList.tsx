@@ -51,7 +51,7 @@ export default function ResourceList({ resources }: ResourceListProps) {
               <span className="text-xs text-slate-500 capitalize">{resource.type}</span>
             </div>
           </div>
-          <ExternalLink className="h-4 w-4 shrink-0 text-slate-400" />
+          <ExternalLink className="h-4 w-4 shrink-0 text-slate-500" />
         </a>
       ))}
     </div>

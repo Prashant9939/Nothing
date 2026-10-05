@@ -124,7 +124,7 @@ export default function AnnouncementBell() {
             )}
 
             {!loading && !loadError && items.length === 0 && (
-              <p className="p-6 text-sm text-gray-400 text-center">No announcements yet.</p>
+              <p className="p-6 text-sm text-gray-500 text-center">No announcements yet.</p>
             )}
 
             {!loading && !loadError && items.map((a) => (
@@ -141,7 +141,7 @@ export default function AnnouncementBell() {
                     <span className={`text-sm truncate ${a.read ? 'text-gray-700' : 'font-semibold text-gray-900'}`}>
                       {a.title}
                     </span>
-                    <span className="text-[10px] text-gray-400 shrink-0">{formatTime(a.createdAt)}</span>
+                    <span className="text-[10px] text-gray-500 shrink-0">{formatTime(a.createdAt)}</span>
                   </span>
                   <span className="block text-xs text-gray-500 mt-0.5 whitespace-pre-line line-clamp-3">{a.message}</span>
                 </span>

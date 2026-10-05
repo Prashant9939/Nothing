@@ -19,7 +19,7 @@ export function Input({ label, error, hint, icon, className = '', id, ...rest }:
       )}
       <div className="relative">
         {icon && (
-          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true">
+          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden="true">
             {icon}
           </span>
         )}
@@ -58,7 +58,7 @@ export function PasswordField({ label, error, hint, className, id, ...rest }: In
           type="button"
           onClick={() => setVisible((v) => !v)}
           aria-label={visible ? 'Hide password' : 'Show password'}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 focus:outline-none"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition-colors hover:text-slate-600 focus:outline-none"
         >
           {visible ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>

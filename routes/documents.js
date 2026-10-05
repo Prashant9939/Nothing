@@ -17,14 +17,38 @@ const {
 } = require('../lib/documentBrand');
 const { getReportContent } = require('../data/reportContent');
 const { streamReport } = require('../lib/reportPdf');
+const { streamForm, ALLOWED_TYPES: FORM_TYPES } = require('./forms');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
 const hasPaidAccess = async (enrollmentId, userId) => !!await db.get("SELECT 1 FROM payments WHERE enrollmentId = ? AND userId = ? AND status = 'completed' LIMIT 1", enrollmentId, userId);
 
+// Unlocked only after the exam is passed (mirrors the client-side isPassed):
+// paid + exam completed (or the enrollment already marked completed).
+const hasPassedAccess = async (enrollmentId, userId) => {
+  if (!(await hasPaidAccess(enrollmentId, userId))) return false;
+  const exam = await db.get("SELECT status FROM exams WHERE enrollmentId = ? ORDER BY id DESC LIMIT 1", enrollmentId);
+  if (exam && exam.status === 'completed') return true;
+  const enrollment = await db.get("SELECT status FROM enrollments WHERE id = ? AND userId = ? LIMIT 1", enrollmentId, userId);
+  return !!enrollment && enrollment.status === 'completed';
+};
+
+// Shared loader for the exam-gated documents below.
+const loadEnrollment = (enrollmentId, userId) => db.get(`
+  SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, u.year,
+         u.rollNo, u.regNo, u.university,
+         i.title as internshipTitle, i.duration, i.modules, i.category
+  FROM enrollments e
+  JOIN users u ON e.userId = u.id
+  JOIN internships i ON e.internshipId = i.id
+  WHERE e.id = ? AND e.userId = ?
+`, enrollmentId, userId);
+
 // ===================== BRANDING =====================
 const LOGO_FILE = path.join(__dirname, '..', 'client', 'public', 'logo', 'logo-full.png');
+// Scanned signature (supervisor / signatory) from client/src/assets/Legeal.
+const SIGN_FILE = path.join(__dirname, '..', 'client', 'src', 'assets', 'Legeal', 'sign.png');
 
 let LOGO_SIZE = { width: 2274, height: 1856 };
 try {
@@ -34,6 +58,28 @@ try {
   }
 } catch (e) {
   // logo file missing - drawBrand falls back to a text mark
+}
+
+let SIGN_SIZE = { width: 1728, height: 863 };
+try {
+  const buf = fs.readFileSync(SIGN_FILE);
+  if (buf.length > 24 && buf.slice(1, 4).toString('ascii') === 'PNG') {
+    SIGN_SIZE = { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  }
+} catch (e) {
+  // sign image missing - drawSignature draws nothing
+}
+
+// Draws the signature image so its bottom edge sits at `bottom`, left edge at
+// `x`, scaled to `width` pt. Returns the drawn width, or null if unavailable.
+function drawSignature(doc, x, bottom, width = 80) {
+  try {
+    const h = width * (SIGN_SIZE.height / SIGN_SIZE.width);
+    doc.image(SIGN_FILE, x, bottom - h, { width });
+    return width;
+  } catch (e) {
+    return null;
+  }
 }
 
 // Draws the website logo at (x, y) with the given height.
@@ -369,7 +415,7 @@ router.get('/download/offer-letter/:enrollmentId', authenticateToken, async (req
   doc.rect(50, y + 6, 5, 58).fill(GREEN.mid);
   doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark).text('TO', 66, y + 10, { width: 60 });
   doc.font('Helvetica').fontSize(10).fillColor(GREEN.ink).text(`${enrollment.firstName} ${enrollment.lastName}`, 66, y + 25, { width: w - 132 });
-  doc.fontSize(9.5).fillColor(GREEN.body).text(`${enrollment.college || 'N/A'} | ${enrollment.course || 'N/A'}`, 66, y + 40, { width: w - 132 });
+  doc.fontSize(9.5).fillColor(GREEN.body).text(`${enrollment.college || 'N/A'} | ${String(enrollment.course || 'N/A').toUpperCase()}`, 66, y + 40, { width: w - 132 });
   doc.text(`${enrollment.email} | ${enrollment.phone || 'N/A'}`, 66, y + 54, { width: w - 132 });
 
   // Body
@@ -542,7 +588,7 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
   // College + student + certificate ID strip
   doc.roundedRect(60, detailY + 46, w - 120, 44, 8).fill(GREEN.pale).stroke(GREEN.stroke);
   doc.rect(60, detailY + 52, 5, 32).fill(GREEN.mid);
-  doc.font('Helvetica').fontSize(10).fillColor(GREEN.body).text(`College: ${cert.college || 'N/A'}  ·  Course: ${cert.course || 'N/A'}`, 0, detailY + 56, { width: w, align: 'center' });
+  doc.font('Helvetica').fontSize(10).fillColor(GREEN.body).text(`College: ${cert.college || 'N/A'}  ·  Course: ${String(cert.course || 'N/A').toUpperCase()}`, 0, detailY + 56, { width: w, align: 'center' });
   doc.fontSize(8.5).fillColor(GREEN.gray)
     .text(`Email: ${cert.email || 'N/A'}  ·  Certificate ID: ${cert.certificateId}  ·  Issued: ${cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : 'N/A'}`, 0, detailY + 72, { width: w, align: 'center' });
 
@@ -557,7 +603,7 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
   const enrolledOn = cert.enrolledAt
     ? `  ·  Enrolled: ${new Date(cert.enrolledAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
     : '';
-  const studentLine = `Course: ${cert.course || 'N/A'}  ·  Roll No: ${cert.rollNo || 'N/A'}  ·  Session: ${cert.year || 'N/A'}${cert.regNo ? `  ·  Reg No: ${cert.regNo}` : ''}`;
+  const studentLine = `Course: ${String(cert.course || 'N/A').toUpperCase()}  ·  Roll No: ${cert.rollNo || 'N/A'}  ·  Session: ${cert.year || 'N/A'}${cert.regNo ? `  ·  Reg No: ${cert.regNo}` : ''}`;
   const insRows = [
     ['Program', String(cert.internshipTitle || 'N/A')],
     ['Duration', `${duration} Days  ·  Modules: ${cert.modules ?? 'N/A'}${enrolledOn}`],
@@ -774,4 +820,365 @@ router.get('/download/attendance/:enrollmentId', authenticateToken, async (req, 
   doc.end();
 });
 
+// ===================== DAILY LOG BOOK (multi-page) =====================
+// Day-wise activity register: one writable row per internship day, spilling to
+// as many pages as the duration needs (28 days -> 2 pages, 42 days -> 3).
+const LOG_COLS = [
+  { label: '#', w: 26 },
+  { label: 'DATE', w: 86 },
+  { label: 'DAY', w: 58 },
+  { label: 'TASKS / ACTIVITIES PERFORMED', w: 175 },
+  { label: 'HOURS', w: 44 },
+  { label: "SUPERVISOR'S SIGN.", w: 106 },
+];
+const LOG_ROW_H = 26;
+
+function logColX(i) {
+  let x = 50;
+  for (let c = 0; c < i; c++) x += LOG_COLS[c].w;
+  return x;
+}
+
+function logGridRow(doc, y, cells, opts = {}) {
+  const bottom = y + (opts.h || LOG_ROW_H);
+  if (opts.fill) { doc.fillColor(opts.fill).rect(50, y, 495, opts.h || LOG_ROW_H).fill(); }
+  if (opts.head) { doc.fillColor(GREEN.pale).rect(50, y, 495, opts.h || LOG_ROW_H).fill(); }
+  doc.lineWidth(0.6).strokeColor(GREEN.stroke);
+  for (let c = 0; c <= LOG_COLS.length; c++) {
+    const x = logColX(c);
+    doc.moveTo(x, y).lineTo(x, bottom).stroke();
+  }
+  doc.moveTo(50, y).lineTo(545, y).stroke();
+  doc.moveTo(50, bottom).lineTo(545, bottom).stroke();
+  cells.forEach((text, i) => {
+    const x = logColX(i);
+    doc.font(opts.head ? 'Helvetica-Bold' : 'Helvetica')
+      .fontSize(opts.head ? 8 : 8.5)
+      .fillColor(opts.head ? GREEN.dark : (opts.color || GREEN.body))
+      .text(String(text ?? ''), x + 5, y + (opts.head ? 4.5 : 6), {
+        width: LOG_COLS[i].w - 10, height: opts.h || LOG_ROW_H - 6, ellipsis: true, align: opts.align || 'left',
+      });
+  });
+}
+
+function drawLogFooter(doc, pageNo, total) {
+  const w = doc.page.width;
+  const h = doc.page.height;
+  const g = doc.linearGradient(50, 0, w - 50, 0);
+  g.stop(0, GREEN.mint).stop(1, GREEN.wave);
+  doc.rect(50, h - 132, w - 100, 1.2).fill(g);
+  doc.font('Helvetica').fontSize(7).fillColor(GREEN.gray)
+    .text(footText(), 50, h - 126, { width: w - 190, height: 10, ellipsis: true, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GREEN.mid)
+    .text(`Page ${pageNo} of ${total}`, w - 130, h - 126, { width: 80, align: 'right' });
+  drawDisclaimer(doc, h - 117, { size: 6.5 });
+}
+
+function buildLogBook(doc, d) {
+  const w = doc.page.width;
+  const LIMIT = doc.page.height - 140;
+
+  const header = (first) => {
+    drawBrand(doc, 50, 42);
+    drawTitle(doc, 'DAILY LOG BOOK', 92, { size: 24 });
+    drawQrBadge(doc, d.qr, 470, 40, 70);
+    doc.font('Helvetica').fontSize(9).fillColor(GREEN.gray)
+      .text(`Ref: ${d.ref}`, w - 270, 128, { width: 220, align: 'right' });
+    let y = 146;
+    if (first) {
+      doc.roundedRect(50, y, w - 100, 70, 6).fill('#ffffff').stroke(GREEN.stroke);
+      doc.rect(50, y + 6, 5, 58).fill(GREEN.mid);
+      doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body);
+      doc.text(`Student: ${d.studentName}`, 66, y + 7, { width: w - 132 });
+      doc.text(`College: ${d.college || 'N/A'}  |  Program: ${d.program}`, 66, y + 22, { width: w - 132, height: 13, ellipsis: true });
+      doc.text(`Duration: ${d.duration} Days  |  Enrolled: ${d.enrolledLabel}`, 66, y + 37, { width: w - 132, height: 13, ellipsis: true });
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark)
+        .text(`Log Period: ${d.periodText}`, 66, y + 52, { width: w - 132 });
+      y += 82;
+    } else {
+      doc.font('Helvetica').fontSize(9).fillColor(GREEN.body)
+        .text(`Student: ${d.studentName}  |  Program: ${d.program}  |  Continued`, 50, y, { width: w - 100, height: 13, ellipsis: true });
+      y += 18;
+    }
+    y = sectionBar(doc, 'DAILY ACTIVITY RECORD', y);
+    logGridRow(doc, y, LOG_COLS.map((c) => c.label), { head: true, h: 18 });
+    return y + 18;
+  };
+
+  const fmtDate = (x) => x.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const start = new Date(d.enrolledAt);
+
+  let y = header(true);
+  for (let i = 1; i <= d.duration; i++) {
+    if (y + LOG_ROW_H > LIMIT) {
+      doc.addPage();
+      drawPageBackground(doc);
+      y = header(false);
+    }
+    const date = new Date(start.getTime() + (i - 1) * 86400000);
+    logGridRow(doc, y, [
+      i,
+      fmtDate(date),
+      date.toLocaleDateString('en-IN', { weekday: 'long' }),
+      '',
+      `${d.hoursPerDay} hrs`,
+      '',
+    ], { fill: i % 2 === 0 ? '#FAFAFA' : undefined });
+    y += LOG_ROW_H;
+  }
+
+  // Closing signature strip (own page when the table runs to the footer)
+  if (y + 74 > LIMIT) {
+    doc.addPage();
+    drawPageBackground(doc);
+    y = header(false);
+  }
+  y += 16;
+  const sigY = y + 26;
+  [
+    { label: 'SIGNATURE OF STUDENT', x: 50, w: 210 },
+    { label: 'SIGNATURE OF PROGRAM GUIDE / SUPERVISOR', x: 300, w: 245 },
+  ].forEach((c) => {
+    doc.lineWidth(0.8).strokeColor('#9CA3AF').moveTo(c.x, sigY).lineTo(c.x + c.w, sigY).stroke();
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(GREEN.dark).text(c.label, c.x, sigY + 5, { width: c.w });
+  });
+  // Supervisor's signature sits on the line (image from assets/Legeal)
+  drawSignature(doc, 422.5 - 35, sigY - 4, 70);
+
+  // Footers with page numbers on every page
+  const range = doc.bufferedPageRange();
+  for (let i = range.start; i < range.start + range.count; i++) {
+    doc.switchToPage(i);
+    drawLogFooter(doc, i - range.start + 1, range.count);
+  }
+  return { pages: range.count, y: sigY + 14 };
+}
+
+// Wraps the builder so the layout can be exercised without a database row.
+// Returns { pages, y } where y is the bottom of the last drawn element.
+function streamLogBook(res, d) {
+  const doc = startPdf(res, d.filename, { watermark: 'LOG BOOK', bufferPages: true });
+  const result = buildLogBook(doc, d);
+  doc.end();
+  return result;
+}
+
+router.get('/download/log-book/:enrollmentId', authenticateToken, async (req, res) => {
+  const enrollment = await loadEnrollment(req.params.enrollmentId, req.user.id);
+  if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasPassedAccess(enrollment.id, req.user.id))) {
+    return res.status(403).json({ error: 'Pass the exam to download the daily log book.' });
+  }
+
+  const attendanceNo = await ensureEnrollmentNumber(db, enrollment, 'attendanceNo');
+  const qrBuffer = await makeQr(attendanceNo);
+  const duration = enrollment.duration || 30;
+  const fmt = (x) => x.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const enrolled = new Date(enrollment.enrolledAt);
+  const dateMode = (await getSetting(db, 'attendanceDateMode')) === 'backward' ? 'backward' : 'forward';
+  const start = dateMode === 'backward' ? new Date(Date.now() - (duration - 1) * 86400000) : enrolled;
+
+  streamLogBook(res, {
+    filename: `daily-log-book-${attendanceNo}.pdf`,
+    ref: attendanceNo,
+    qr: qrBuffer,
+    studentName: `${enrollment.firstName} ${enrollment.lastName}`,
+    college: enrollment.college,
+    program: enrollment.internshipTitle,
+    duration,
+    enrolledAt: start,
+    enrolledLabel: fmt(enrolled),
+    periodText: `${fmt(start)} – ${fmt(new Date(start.getTime() + (duration - 1) * 86400000))}`,
+    hoursPerDay: Math.round((126 / duration) * 10) / 10,
+  });
+});
+
+// ===================== INTERNSHIP MARKSHEET (single page) =====================
+function markRow(doc, label, value, y, opts = {}) {
+  const w = doc.page.width;
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark).text(label, 62, y, { width: 150 });
+  doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(opts.bold ? 10 : 9.5)
+    .fillColor(opts.color || GREEN.body)
+    .text(String(value ?? 'N/A'), 216, y, { width: w - 276, height: 13, ellipsis: true });
+  return y + 16;
+}
+
+function buildMarksheet(doc, d) {
+  const w = doc.page.width;
+
+  drawBrand(doc, 50, 42);
+  drawTitle(doc, 'INTERNSHIP MARKSHEET', 92, { size: 24 });
+  drawQrBadge(doc, d.qr, 470, 40, 70);
+  doc.font('Helvetica').fontSize(9).fillColor(GREEN.gray)
+    .text(`Ref: ${d.ref}`, w - 270, 128, { width: 220, align: 'right' });
+
+  let y = sectionBar(doc, 'STUDENT DETAILS', 148);
+  y = markRow(doc, 'Name', d.studentName, y);
+  y = markRow(doc, 'College', d.college, y);
+  y = markRow(doc, 'Course', d.course, y);
+  y = markRow(doc, 'Roll No. / Reg. No.', d.rollNo, y);
+
+  y = sectionBar(doc, 'PROGRAM DETAILS', y + 12);
+  y = markRow(doc, 'Program', d.program, y);
+  y = markRow(doc, 'Duration', `${d.duration} Days  ·  Enrolled: ${d.enrolledLabel}`, y);
+  y = markRow(doc, 'Modules', `${d.modulesDone} of ${d.modulesTotal} completed`, y);
+  y = markRow(doc, 'Result Declared', d.completedLabel, y);
+
+  // Marks table
+  y = sectionBar(doc, 'MARKS & GRADE', y + 12);
+  const cols = [26, 210, 70, 70, 119]; // #, component, max, secured, remarks
+  const cx = [50];
+  cols.forEach((c) => cx.push(cx[cx.length - 1] + c));
+  const headH = 18;
+  const rowH = 20;
+  doc.fillColor(GREEN.pale).rect(50, y, 495, headH).fill();
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(GREEN.dark);
+  ['#', 'COMPONENT', 'MAXIMUM', 'SECURED', 'REMARKS'].forEach((h, i) => {
+    doc.text(h, cx[i] + 6, y + 4.5, { width: cols[i] - 12, align: i >= 2 && i <= 3 ? 'center' : 'left' });
+  });
+  y += headH;
+  d.marks.forEach((m, i) => {
+    if (i % 2 === 1) doc.fillColor('#FAFAFA').rect(50, y, 495, rowH).fill();
+    doc.font('Helvetica').fontSize(9).fillColor(GREEN.body);
+    doc.text(String(i + 1), cx[0] + 6, y + 5.5, { width: cols[0] - 12 });
+    doc.text(m.label, cx[1] + 6, y + 5.5, { width: cols[1] - 12, height: 12, ellipsis: true });
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(GREEN.dark);
+    doc.text(String(m.max), cx[2] + 6, y + 5.5, { width: cols[2] - 12, align: 'center' });
+    doc.text(String(m.secured), cx[3] + 6, y + 5.5, { width: cols[3] - 12, align: 'center' });
+    doc.font('Helvetica').fontSize(8.5).fillColor(GREEN.gray);
+    doc.text(m.remark, cx[4] + 6, y + 6, { width: cols[4] - 12, height: 11, ellipsis: true });
+    y += rowH;
+    doc.lineWidth(0.5).strokeColor(GREEN.stroke).moveTo(50, y).lineTo(545, y).stroke();
+  });
+  doc.lineWidth(0.6).strokeColor(GREEN.stroke);
+  cx.forEach((x) => doc.moveTo(x, y - rowH * d.marks.length - headH).lineTo(x, y).stroke());
+  doc.rect(50, y - rowH * d.marks.length - headH, 495, rowH * d.marks.length + headH).stroke();
+
+  // Result strip
+  y += 14;
+  const boxW = (495 - 32) / 3;
+  [['GRADE', d.grade, GREEN.dark], ['SCORE', `${d.score}%`, GREEN.dark], ['RESULT', d.result, d.result === 'PASS' ? '#166534' : '#991B1B']]
+    .forEach(([label, value, color], i) => {
+      const x = 50 + i * (boxW + 16);
+      doc.roundedRect(x, y, boxW, 46, 6).fill('#ffffff').stroke(GREEN.stroke);
+      doc.rect(x, y + 5, 4, 36).fill(GREEN.mid);
+      doc.font('Helvetica').fontSize(8).fillColor(GREEN.gray).text(label, x, y + 8, { width: boxW, align: 'center' });
+      doc.font('Helvetica-Bold').fontSize(17).fillColor(color).text(String(value), x, y + 21, { width: boxW, align: 'center' });
+    });
+  y += 60;
+
+  // Signatory: stamp left, controller of examinations right
+  drawStamp(doc, 62, y, 70);
+  doc.font('Helvetica').fontSize(7.5).fillColor(GREEN.gray)
+    .text('Official Seal', 42, y + 74, { width: 110, align: 'center' });
+  const sigLine = doc.page.height - 190;
+  // Signature image on the line, above the signatory's name
+  drawSignature(doc, w - 165 - 45, sigLine - 4, 90);
+  doc.lineWidth(1).strokeColor(GREEN.light)
+    .moveTo(w - 250, sigLine).lineTo(w - 80, sigLine).stroke();
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(GREEN.dark)
+    .text(d.signatory, w - 250, sigLine + 6, { width: 170, align: 'center' });
+  doc.font('Helvetica').fontSize(9).fillColor(GREEN.gray)
+    .text(`Controller of Examinations, ${companyName()}`, w - 250, sigLine + 20, { width: 170, align: 'center' });
+
+  drawFooter(doc);
+  return Math.max(y + 84, sigLine + 34);
+}
+
+// Wraps the builder so the layout can be exercised without a database row.
+// The marksheet is always a single page; returns { pages, y }.
+function streamMarksheet(res, d) {
+  const doc = startPdf(res, d.filename, { watermark: 'MARKSHEET' });
+  const y = buildMarksheet(doc, d);
+  doc.end();
+  return { pages: 1, y };
+}
+
+router.get('/download/marksheet/:enrollmentId', authenticateToken, async (req, res) => {
+  const enrollment = await loadEnrollment(req.params.enrollmentId, req.user.id);
+  if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasPassedAccess(enrollment.id, req.user.id))) {
+    return res.status(403).json({ error: 'Pass the exam to download the marksheet.' });
+  }
+
+  const cert = await db.get('SELECT * FROM certificates WHERE enrollmentId = ?', enrollment.id);
+  const exam = await db.get('SELECT * FROM exams WHERE enrollmentId = ? ORDER BY id DESC LIMIT 1', enrollment.id);
+  const ref = cert ? cert.certificateId : await ensureEnrollmentNumber(db, enrollment, 'reportNo');
+  const qrBuffer = await makeQr(ref);
+
+  const duration = enrollment.duration || 30;
+  const progress = enrollment.progress || 100;
+  let completedIdx = [];
+  try { completedIdx = JSON.parse(enrollment.completedModules || '[]'); } catch (e) { completedIdx = []; }
+  const modulesTotal = Number(enrollment.modules) || completedIdx.length || 1;
+  const modulesDone = Math.min(modulesTotal, completedIdx.length || Math.round((progress / 100) * modulesTotal));
+  const modulesPct = Math.min(100, Math.round((modulesDone / modulesTotal) * 100));
+  const score = exam && exam.score != null ? exam.score : (cert ? cert.score : 0);
+  const passing = (exam && exam.passingMarks) || 40;
+  const grade = cert && cert.grade
+    ? cert.grade
+    : (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 60 ? 'B' : score >= 50 ? 'C' : 'D');
+  const result = exam && exam.status === 'completed' ? 'PASS' : 'FAIL';
+  const aggregate = Math.round((score + modulesPct + progress) / 3);
+  const enrolled = new Date(enrollment.enrolledAt);
+
+  streamMarksheet(res, {
+    filename: `internship-marksheet-${ref}.pdf`,
+    ref,
+    qr: qrBuffer,
+    studentName: `${enrollment.firstName} ${enrollment.lastName}`,
+    college: enrollment.college || 'N/A',
+    course: [enrollment.course ? String(enrollment.course).toUpperCase() : '', enrollment.year].filter(Boolean).join(' - ') || 'N/A',
+    rollNo: [enrollment.rollNo ? `Roll No: ${enrollment.rollNo}` : '', enrollment.regNo ? `Reg No: ${enrollment.regNo}` : ''].filter(Boolean).join('  ·  ') || 'N/A',
+    program: enrollment.internshipTitle,
+    duration,
+    enrolledLabel: enrolled.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    modulesDone,
+    modulesTotal,
+    completedLabel: exam && exam.completedAt
+      ? new Date(exam.completedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+      : 'N/A',
+    marks: [
+      { label: 'Final Examination', max: 100, secured: score, remark: `Passing: ${passing}` },
+      { label: 'Learning Modules Completion', max: 100, secured: modulesPct, remark: `${modulesDone}/${modulesTotal} modules` },
+      { label: 'Attendance', max: 100, secured: progress, remark: `${Math.floor((duration * progress) / 100)}/${duration} days` },
+      { label: 'Overall Aggregate', max: 100, secured: aggregate, remark: `Grade ${grade}` },
+    ],
+    grade,
+    score,
+    result,
+    signatory: directorName(),
+  });
+});
+
+// ===================== EXAM-GATED FORMS (consent / feedback / undertaking) ===
+router.get('/download/form/:type/:enrollmentId', authenticateToken, async (req, res) => {
+  const key = String(req.params.type || '').toLowerCase();
+  if (!FORM_TYPES.includes(key)) return res.status(404).json({ error: 'Unknown form type' });
+
+  const enrollment = await loadEnrollment(req.params.enrollmentId, req.user.id);
+  if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasPassedAccess(enrollment.id, req.user.id))) {
+    return res.status(403).json({ error: 'Pass the exam to download this form.' });
+  }
+
+  try {
+    const cert = await db.get('SELECT certificateId FROM certificates WHERE enrollmentId = ?', enrollment.id);
+    const ref = cert ? cert.certificateId : await ensureEnrollmentNumber(db, enrollment, 'reportNo');
+    const qrBuffer = await makeQr(ref);
+    await streamForm(res, key, {
+      student: enrollment,
+      title: enrollment.internshipTitle,
+      duration: enrollment.duration,
+      qr: qrBuffer,
+    });
+  } catch (err) {
+    console.error(`Form generation failed (${key}):`, err.message);
+    if (res.headersSent) res.end();
+    else res.status(500).json({ error: 'Could not generate the form' });
+  }
+});
+
 module.exports = router;
+// Exported for layout tests / scripts that render the PDFs without a DB row.
+module.exports.renderers = { streamLogBook, streamMarksheet };

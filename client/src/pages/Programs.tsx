@@ -89,7 +89,7 @@ export default function Programs() {
           {/* Search + filters */}
           <div className="mb-6">
             <div className="relative max-w-md mx-auto mb-6">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
                 type="text"
                 value={query}
@@ -101,7 +101,7 @@ export default function Programs() {
                 <button
                   onClick={() => setQuery('')}
                   aria-label="Clear search"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600"
                 >
                   <X size={16} />
                 </button>
@@ -120,7 +120,7 @@ export default function Programs() {
                   }`}
                 >
                   {f.label}
-                  <span className={`ml-1.5 text-[11px] ${active === f.key ? 'text-orange-100' : 'text-gray-400'}`}>
+                  <span className={`ml-1.5 text-[11px] ${active === f.key ? 'text-orange-100' : 'text-gray-500'}`}>
                     {f.count}
                   </span>
                 </button>
@@ -164,16 +164,16 @@ export default function Programs() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-12">
-              <div className="mb-3 flex justify-center"><FolderOpen className="w-10 h-10 text-gray-400" /></div>
+              <div className="mb-3 flex justify-center"><FolderOpen className="w-10 h-10 text-gray-500" /></div>
               <p className="text-gray-600 mb-1 font-medium">No programs found</p>
-              <p className="text-sm text-gray-400 mb-4">Try a different search term or category.</p>
+              <p className="text-sm text-gray-500 mb-4">Try a different search term or category.</p>
               <button onClick={clearFilters} className="px-6 py-2.5 bg-orange-500 text-white text-sm font-semibold rounded-lg hover:bg-orange-600 transition-colors">
                 Show all programs
               </button>
             </div>
           ) : (
             <>
-              <p className="text-sm text-gray-400 mb-5">
+              <p className="text-sm text-gray-500 mb-5">
                 Showing {filtered.length} of {programs.length} program{programs.length === 1 ? '' : 's'}
               </p>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">

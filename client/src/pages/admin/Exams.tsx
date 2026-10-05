@@ -193,7 +193,7 @@ export default function AdminExams() {
                               {selected == null ? 'Not answered' : isCorrect ? 'Correct' : 'Wrong'}
                             </span>
                             {selected != null && (
-                              <button onClick={() => setAnswer(q.id, null)} className="text-[11px] text-gray-400 hover:text-gray-600">Clear</button>
+                              <button onClick={() => setAnswer(q.id, null)} className="text-[11px] text-gray-500 hover:text-gray-600">Clear</button>
                             )}
                           </div>
                         </div>
@@ -244,7 +244,7 @@ export default function AdminExams() {
               <div className="text-sm">
                 <span className="text-gray-500">New result: </span>
                 <span className="font-bold text-gray-900">{computedScore}%</span>
-                {hasQuestions && <span className="text-gray-400 text-xs"> ({correctCount}/{attempt?.totalQuestions} correct)</span>}
+                {hasQuestions && <span className="text-gray-500 text-xs"> ({correctCount}/{attempt?.totalQuestions} correct)</span>}
                 <span className={`ml-2 text-xs font-semibold ${computedStatus === 'completed' ? 'text-emerald-600' : 'text-red-600'}`}>
                   {computedStatus === 'completed' ? 'PASS' : 'FAIL'} (passing {passingMarks}%)
                 </span>

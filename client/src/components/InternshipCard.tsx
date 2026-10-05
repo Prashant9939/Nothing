@@ -110,13 +110,13 @@ export default function InternshipCard({
 
         <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500">
           <span className="inline-flex items-center gap-1.5">
-            <Clock size={13} className="text-slate-400" /> {internship.duration} Days
+            <Clock size={13} className="text-slate-500" /> {internship.duration} Days
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <BookOpen size={13} className="text-slate-400" /> {internship.modules} Modules
+            <BookOpen size={13} className="text-slate-500" /> {internship.modules} Modules
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Award size={13} className="text-slate-400" /> Certificate
+            <Award size={13} className="text-slate-500" /> Certificate
           </span>
         </div>
 
@@ -137,7 +137,7 @@ export default function InternshipCard({
               </span>
             ))}
             {topics.length > 4 && (
-              <span className="rounded-full border border-slate-100 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-400">
+              <span className="rounded-full border border-slate-100 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500">
                 +{topics.length - 4}
               </span>
             )}
@@ -148,7 +148,7 @@ export default function InternshipCard({
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-xl font-bold text-slate-900">{formatMoney(internship.price)}</span>
             {discount > 0 && (
-              <span className="text-sm text-slate-400 line-through">{formatMoney(internship.originalPrice)}</span>
+              <span className="text-sm text-slate-500 line-through">{formatMoney(internship.originalPrice)}</span>
             )}
             {variant === 'select' && discount > 0 && (
               <span className="text-xs font-bold text-orange-600">{discount}% OFF</span>
@@ -170,7 +170,7 @@ export default function InternshipCard({
                 <Check size={15} /> Selected
               </span>
             ) : (
-              <span className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-slate-400 transition-colors group-hover:text-orange-500">
+              <span className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-slate-500 transition-colors group-hover:text-orange-500">
                 Select <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
               </span>
             )

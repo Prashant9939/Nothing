@@ -266,7 +266,7 @@ export default function AdminInstitutions() {
 
           <div className="max-h-[420px] overflow-y-auto divide-y divide-gray-100">
             {filteredUniversities.length === 0 && (
-              <p className="p-5 text-sm text-gray-400 text-center">No universities found.</p>
+              <p className="p-5 text-sm text-gray-500 text-center">No universities found.</p>
             )}
             {filteredUniversities.map((u) => (uniEditing === u.id ? (
               <div key={u.id} className="p-4 space-y-2 bg-slate-50" onClick={(e) => e.stopPropagation()}>
@@ -369,7 +369,7 @@ export default function AdminInstitutions() {
           </div>
 
           {!selected ? (
-            <p className="p-8 text-sm text-gray-400 text-center">
+            <p className="p-8 text-sm text-gray-500 text-center">
               Select a university to add, edit or remove its colleges.
             </p>
           ) : (
@@ -400,7 +400,7 @@ export default function AdminInstitutions() {
 
               <div className="max-h-[420px] overflow-y-auto divide-y divide-gray-100">
                 {selected.colleges.length === 0 && (
-                  <p className="p-5 text-sm text-gray-400 text-center">No colleges added yet.</p>
+                  <p className="p-5 text-sm text-gray-500 text-center">No colleges added yet.</p>
                 )}
                 {selected.colleges.map((c) => (collegeEditing === c.id ? (
                   <div key={c.id} className="p-4 space-y-2 bg-slate-50">

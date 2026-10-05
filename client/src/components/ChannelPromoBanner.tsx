@@ -12,8 +12,9 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
+import { WHATSAPP_CHANNEL_URL } from '../constants';
 
-const CHANNEL_URL = 'https://www.whatsapp.com/channel/0029VbDhT1UKWEL0Yx5dKV0i';
+const CHANNEL_URL = WHATSAPP_CHANNEL_URL;
 const FLAG_KEY = 'iq:channel-banner';
 
 const FEATURES = [

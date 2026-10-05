@@ -106,7 +106,7 @@ export default function NewRegistrationModal({ open, onClose, onCreated }: Props
             <h2 className="text-lg font-bold text-gray-900">New Registration</h2>
             <p className="text-xs text-gray-500 mt-0.5">Create a student account with the same details as a normal registration</p>
           </div>
-          <button onClick={() => !loading && onClose()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"><X size={18} /></button>
+          <button onClick={() => !loading && onClose()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors"><X size={18} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="overflow-y-auto">
@@ -240,7 +240,7 @@ export default function NewRegistrationModal({ open, onClose, onCreated }: Props
                 <input type="password" value={form.confirmPassword} onChange={(e) => set('confirmPassword', e.target.value)} placeholder="Confirm password *" className={inputCls} />
               </div>
               <PasswordHints value={form.password} className="mt-0" />
-              <p className="text-xs text-gray-400">Share these credentials with the student — they can sign in immediately.</p>
+              <p className="text-xs text-gray-500">Share these credentials with the student — they can sign in immediately.</p>
             </div>
           </div>
 

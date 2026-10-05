@@ -67,7 +67,7 @@ export default function AdminLayout() {
               {!collapsed && (
                 <div className="hidden lg:block min-w-0">
                   <span className="text-sm font-bold text-white">IQ<span className="text-slate-300">Intern</span></span>
-                  <p className="text-[9px] text-slate-500 uppercase tracking-widest">Admin Panel</p>
+                  <p className="text-[9px] text-slate-400 uppercase tracking-widest">Admin Panel</p>
                 </div>
               )}
             </Link>
@@ -85,11 +85,11 @@ export default function AdminLayout() {
                   className={`flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200
                     ${collapsed ? 'lg:justify-center lg:px-0 px-3 py-2.5' : 'px-3 py-2.5'}
                     ${isActive
-                      ? 'bg-white/10 text-white shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)]'
+                      ? 'bg-emerald-500/15 text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)] ring-1 ring-inset ring-emerald-400/25'
                       : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                     }`}
                 >
-                  <span className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`}>
+                  <span className={`shrink-0 ${isActive ? 'text-emerald-400' : 'text-slate-400'}`}>
                     {iconMap[link.icon]}
                   </span>
                   {!collapsed && <span className="hidden lg:block truncate">{link.label}</span>}
@@ -109,10 +109,10 @@ export default function AdminLayout() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-slate-200 truncate">{user?.firstName} {user?.lastName}</p>
-                    <p className="text-[10px] text-slate-500 truncate">Administrator</p>
+                    <p className="text-[10px] text-slate-400 truncate">Administrator</p>
                   </div>
                 </div>
-                <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2 text-slate-500 rounded-xl text-xs font-medium hover:bg-red-500/10 hover:text-red-400 transition-all">
+                <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2 text-slate-400 rounded-xl text-xs font-medium hover:bg-red-500/10 hover:text-red-400 transition-all">
                   <LogOutIcon size={14} />
                   <span>Logout</span>
                 </button>
@@ -124,7 +124,7 @@ export default function AdminLayout() {
                     {user?.firstName?.[0]}{user?.lastName?.[0]}
                   </div>
                 </div>
-                <button onClick={handleLogout} className="flex justify-center w-full p-2 text-slate-500 rounded-xl hover:bg-red-500/10 hover:text-red-400 transition-all" title="Logout">
+                <button onClick={handleLogout} className="flex justify-center w-full p-2 text-slate-400 rounded-xl hover:bg-red-500/10 hover:text-red-400 transition-all" title="Logout">
                   <LogOutIcon size={16} />
                 </button>
               </>
@@ -148,7 +148,7 @@ export default function AdminLayout() {
 
           <div className="flex-1 hidden sm:block max-w-md">
             <div className="relative">
-              <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input type="text" placeholder="Search..." className="w-full pl-9 pr-4 py-2 bg-gray-100 border-0 rounded-xl text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:bg-white transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]" />
             </div>
           </div>
@@ -164,7 +164,7 @@ export default function AdminLayout() {
                 onClick={() => setProfileOpen((v) => !v)}
                 aria-label="Open profile menu"
                 aria-expanded={profileOpen}
-                className="w-8 h-8 bg-gradient-to-br from-slate-700 to-slate-900 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-[0_2px_8px_rgba(0,0,0,0.2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-[0_2px_8px_rgba(0,0,0,0.2)] ring-2 ring-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
               >
                 {user?.firstName?.[0]}{user?.lastName?.[0]}
               </button>
