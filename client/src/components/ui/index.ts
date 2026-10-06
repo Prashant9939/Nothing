@@ -2,6 +2,7 @@ export { default as Button } from './Button';
 export { default as Card } from './Card';
 export { default as Badge } from './Badge';
 export { Spinner, PageLoader, InlineSpinner } from './Spinner';
+export { Skeleton, PageSkeleton } from './Skeleton';
 export { default as EmptyState } from './EmptyState';
 export { default as PageHeader } from './PageHeader';
 export { default as Modal } from './Modal';

@@ -271,9 +271,13 @@ async function seedQuestions(db) {
 
   // Tracks already handled (recorded in settings so admin deletions are never undone)
   let seededTracks = [];
+  let markerExists = false;
   try {
     const row = await db.get("SELECT value FROM settings WHERE key = 'seededQuestionTracks'");
-    if (row) seededTracks = JSON.parse(row.value || '[]');
+    if (row) {
+      markerExists = true;
+      seededTracks = JSON.parse(row.value || '[]');
+    }
   } catch (e) { /* settings table missing on very old DBs */ }
 
   const insert = ('INSERT INTO questions (track, question, optionA, optionB, optionC, optionD, correct) VALUES (?, ?, ?, ?, ?, ?, ?)');
@@ -297,9 +301,12 @@ async function seedQuestions(db) {
   if (total > 0) console.log(`Total questions seeded: ${total}`);
 
   const value = JSON.stringify([...handled]);
-  const marker = await db.get("SELECT 1 AS ok FROM settings WHERE key = 'seededQuestionTracks'");
-  if (marker) await db.run("UPDATE settings SET value = ? WHERE key = 'seededQuestionTracks'", value);
-  else await db.run("INSERT INTO settings (key, value) VALUES ('seededQuestionTracks', ?)", value);
+  // Nothing changed (the steady-state case) — skip the existence re-check and
+  // the write entirely: on a remote pooler each is a full round trip.
+  if (value !== JSON.stringify(seededTracks)) {
+    if (markerExists) await db.run("UPDATE settings SET value = ? WHERE key = 'seededQuestionTracks'", value);
+    else await db.run("INSERT INTO settings (key, value) VALUES ('seededQuestionTracks', ?)", value);
+  }
 }
 
 module.exports = { seedQuestions, questions };

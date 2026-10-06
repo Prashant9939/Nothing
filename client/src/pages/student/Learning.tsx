@@ -4,7 +4,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, Award, BookOpen, Check, CheckCirc
 import { studentApi } from '../../api';
 import type { Enrollment, Exam, LearningModule, Payment } from '../../api';
 import { usePopup } from '../../context/PopupContext';
-import { PageHeader, PageLoader, EmptyState, Button } from '../../components/ui';
+import { PageHeader, PageLoader, PageSkeleton, EmptyState, Button } from '../../components/ui';
 import CircularProgress from '../../components/learning/CircularProgress';
 import ModuleCard from '../../components/learning/ModuleCard';
 import InteractiveQuiz from '../../components/learning/InteractiveQuiz';
@@ -55,7 +55,7 @@ export default function Learning() {
 
   useEffect(() => { load(); }, []);
 
-  if (loading) return <PageLoader label="Loading your modules..." />;
+  if (loading) return <PageSkeleton label="Loading your modules..." />;
 
   if (loadError) {
     return (

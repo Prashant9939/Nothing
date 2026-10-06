@@ -27,13 +27,11 @@ router.post('/', async (req, res) => {
     pagePath = path.split(/[?#]/)[0].slice(0, 300);
   }
 
-  try {
-    await db.run('INSERT INTO analytics_events (visitorId, type, path) VALUES (?, ?, ?)', visitorId, type, pagePath);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('analytics track failed:', err.message);
-    res.status(500).json({ error: 'Failed to record event' });
-  }
+  // Fire-and-forget: the beacon is best-effort telemetry — awaiting the INSERT
+  // added a full DB round trip to every pageview/click before responding.
+  db.run('INSERT INTO analytics_events (visitorId, type, path) VALUES (?, ?, ?)', visitorId, type, pagePath)
+    .catch((err) => console.error('analytics track failed:', err.message));
+  res.json({ ok: true });
 });
 
 module.exports = router;

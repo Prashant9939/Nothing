@@ -5,7 +5,7 @@ import { studentApi } from '../../api';
 import { useAuth } from '../../context/AuthContext';
 import { usePopup } from '../../context/PopupContext';
 import type { Payment } from '../../api';
-import { PageLoader, EmptyState, Button } from '../../components/ui';
+import { PageSkeleton, EmptyState, Button } from '../../components/ui';
 
 // Loads checkout.razorpay.com once and resolves when it is ready to use
 function loadRazorpayCheckout(): Promise<void> {
@@ -134,7 +134,7 @@ export default function Payment() {
     }
   };
 
-  if (loading) return <PageLoader label="Preparing your payment..." />;
+  if (loading) return <PageSkeleton label="Preparing your payment..." />;
 
   if (loadError) {
     return (

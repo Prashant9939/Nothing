@@ -1,8 +1,12 @@
 import axios from 'axios';
+import type { AxiosResponse } from 'axios';
 
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
+  // A stalled request must fail visibly instead of leaving the UI on an
+  // infinite spinner forever (individual calls may still raise this).
+  timeout: 15000,
 });
 
 api.interceptors.request.use((config) => {
@@ -19,11 +23,27 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !isAuthAttempt) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      invalidateDashboard();
+      // Let the SPA clear state and route to /login without re-downloading
+      // the whole app (window.location was a multi-second white screen).
+      window.dispatchEvent(new CustomEvent('auth:expired'));
     }
     return Promise.reject(error);
   }
 );
+
+// ---------------------------------------------------------------------------
+// Student dashboard cache: five screens (Dashboard, Learning, ExamPage,
+// Payment, DocumentsList) all call getDashboard() — a heavy multi-join query.
+// Without a cache every navigation re-fetched it and showed a blank loader.
+// ---------------------------------------------------------------------------
+const DASHBOARD_TTL_MS = 20000;
+let dashboardCache: { at: number; response: AxiosResponse<DashboardResponse> } | null = null;
+let dashboardPending: Promise<AxiosResponse<DashboardResponse>> | null = null;
+
+export function invalidateDashboard() {
+  dashboardCache = null;
+}
 
 export interface User {
   id: number;
@@ -215,9 +235,12 @@ interface LearningProgress {
 
 // Auth API
 export const authApi = {
-  register: (data: any) => api.post<AuthResponse>('/auth/register', data),
-  login: (data: any) => api.post<AuthResponse>('/auth/login', data),
-  logout: () => api.post('/auth/logout'),
+  register: (data: any) =>
+    api.post<AuthResponse>('/auth/register', data).then((r) => { invalidateDashboard(); return r; }),
+  login: (data: any) =>
+    api.post<AuthResponse>('/auth/login', data).then((r) => { invalidateDashboard(); return r; }),
+  logout: () =>
+    api.post('/auth/logout').then((r) => { invalidateDashboard(); return r; }),
   getProfile: () => api.get<{ user: User }>('/auth/profile'),
   checkSession: () => api.get<{ valid: boolean; user: User }>('/auth/check'),
   verifyCertificate: (certificateId: string) => api.post('/auth/verify-certificate', { certificateId }),
@@ -275,23 +298,48 @@ export const adminApi = {
 
 // Student API
 export const studentApi = {
-  getDashboard: () => api.get<DashboardResponse>('/student/dashboard'),
+  // Cached for DASHBOARD_TTL_MS so navigating between student screens does
+  // not re-run the heavy aggregate query (and show a blank loader each time).
+  getDashboard: (opts?: { force?: boolean }) => {
+    if (!opts?.force && dashboardCache && Date.now() - dashboardCache.at < DASHBOARD_TTL_MS) {
+      return Promise.resolve(dashboardCache.response);
+    }
+    if (!dashboardPending) {
+      dashboardPending = api
+        .get<DashboardResponse>('/student/dashboard')
+        .then((res) => {
+          dashboardCache = { at: Date.now(), response: res };
+          return res;
+        })
+        .finally(() => {
+          dashboardPending = null;
+        });
+    }
+    return dashboardPending;
+  },
   getProfile: () => api.get('/student/profile'),
-  updateProfile: (data: any) => api.put('/student/profile', data),
-  changePassword: (data: { currentPassword: string; newPassword: string }) => api.put('/student/change-password', data),
+  updateProfile: (data: any) =>
+    api.put('/student/profile', data).then((r) => { invalidateDashboard(); return r; }),
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    api.put('/student/change-password', data).then((r) => { invalidateDashboard(); return r; }),
   getEnrollmentStatus: () => api.get('/student/enrollment-status'),
   getEnrollment: (id: number) => api.get(`/student/enrollment/${id}`),
   getInternships: () => api.get('/student/internships'),
-  enroll: (internshipId: number) => api.post('/student/enroll', { internshipId }),
+  enroll: (internshipId: number) =>
+    api.post('/student/enroll', { internshipId }).then((r) => { invalidateDashboard(); return r; }),
   createPaymentOrder: (paymentId: number) =>
     api.post<{ demo: boolean; orderId: string; amount: number; currency: string; keyId: string | null }>(`/student/pay/${paymentId}/order`),
   verifyPayment: (paymentId: number, data: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) =>
-    api.post<{ message: string; payment: Payment }>(`/student/pay/${paymentId}/verify`, data),
-  completeModule: (enrollmentId: number, moduleIndex: number) => api.post(`/student/complete-module/${enrollmentId}`, { moduleIndex }),
-  uncompleteModule: (enrollmentId: number, moduleIndex: number) => api.post(`/student/uncomplete-module/${enrollmentId}`, { moduleIndex }),
+    api.post<{ message: string; payment: Payment }>(`/student/pay/${paymentId}/verify`, data).then((r) => { invalidateDashboard(); return r; }),
+  completeModule: (enrollmentId: number, moduleIndex: number) =>
+    api.post(`/student/complete-module/${enrollmentId}`, { moduleIndex }).then((r) => { invalidateDashboard(); return r; }),
+  uncompleteModule: (enrollmentId: number, moduleIndex: number) =>
+    api.post(`/student/uncomplete-module/${enrollmentId}`, { moduleIndex }).then((r) => { invalidateDashboard(); return r; }),
   getExam: (enrollmentId: number) => api.get(`/student/exam/${enrollmentId}`),
-  startExam: (examId: number) => api.post(`/student/exam/${examId}/start`),
-  submitExam: (examId: number, answers: any[]) => api.post(`/student/exam/${examId}/submit`, { answers }),
+  startExam: (examId: number) =>
+    api.post(`/student/exam/${examId}/start`).then((r) => { invalidateDashboard(); return r; }),
+  submitExam: (examId: number, answers: any[]) =>
+    api.post(`/student/exam/${examId}/submit`, { answers }).then((r) => { invalidateDashboard(); return r; }),
   getLearningModules: (internshipId: number) => api.get<{ modules: LearningModule[] }>(`/student/learning-modules/${internshipId}`),
   getLearningModule: (moduleId: number) => api.get<{ module: LearningModule }>(`/student/learning-module/${moduleId}`),
   getLearningProgress: (internshipId: number) => api.get<{ progress: LearningProgress }>(`/student/learning-progress/${internshipId}`),

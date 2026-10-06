@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { authApi } from '../api';
 import type { User } from '../api';
@@ -70,34 +70,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const storeSession = (newToken: string, newUser: User) => {
+  const storeSession = useCallback((newToken: string, newUser: User) => {
     localStorage.setItem('token', newToken);
     localStorage.setItem('user', JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
-  };
+  }, []);
 
-  const clearSession = () => {
+  const clearSession = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setToken(null);
     setUser(null);
-  };
+  }, []);
+
+  // api.ts dispatches this on a 401 instead of forcing a full page reload —
+  // clearing state here lets ProtectedRoute redirect in-SPA (instant).
+  useEffect(() => {
+    const onExpired = () => clearSession();
+    window.addEventListener('auth:expired', onExpired);
+    return () => window.removeEventListener('auth:expired', onExpired);
+  }, [clearSession]);
 
   const apiError = (err: any, fallback: string): Error => {
     return new Error(err?.response?.data?.error || err?.message || fallback);
   };
 
-  const login = async (email: string, password: string, _remember = false) => {
+  const login = useCallback(async (email: string, password: string, _remember = false) => {
     try {
       const response = await authApi.login({ email, password });
       storeSession(response.data.token, response.data.user);
     } catch (err: any) {
       throw apiError(err, 'Login failed');
     }
-  };
+  }, [storeSession]);
 
-  const register = async (data: {
+  const register = useCallback(async (data: {
     firstName: string;
     lastName: string;
     email: string;
@@ -114,38 +122,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err: any) {
       throw apiError(err, 'Registration failed');
     }
-  };
+  }, [storeSession]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await authApi.logout();
     } catch {
       // Ignore network errors on logout
     }
     clearSession();
-  };
+  }, [clearSession]);
 
-  const updateUser = (updatedUser: User) => {
+  const updateUser = useCallback((updatedUser: User) => {
     setUser(updatedUser);
     localStorage.setItem('user', JSON.stringify(updatedUser));
-  };
+  }, []);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isLoading,
-        isAuthenticated: !!user,
-        login,
-        register,
-        logout,
-        updateUser,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  // Memoize the value object so consumers of useAuth() don't re-render on
+  // every provider render (previously a fresh object literal each time).
+  const value = useMemo(
+    () => ({
+      user,
+      token,
+      isLoading,
+      isAuthenticated: !!user,
+      login,
+      register,
+      logout,
+      updateUser,
+    }),
+    [user, token, isLoading, login, register, logout, updateUser]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

@@ -9,6 +9,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
+const compression = require('compression');
 
 const db = require('./db');
 const { refreshBrand } = require('./lib/documentBrand');
@@ -99,6 +100,16 @@ app.use((req, res, next) => {
   ].join('; '));
   next();
 });
+// gzip every text response (bundle, JSON APIs) — static assets and big admin
+// lists were shipping raw. PDFs are skipped: pdfkit already deflate-compresses
+// its content streams, so recompressing them only burns CPU.
+app.use(compression({
+  filter: (req, res) => {
+    const type = String(res.getHeader('Content-Type') || '');
+    if (type.includes('application/pdf') || req.path.includes('/download/')) return false;
+    return compression.filter(req, res);
+  },
+}));
 // The database (schema + seeds) and brand settings must be ready before any
 // request is served. On Vercel the function starts handling requests as soon
 // as it is required. The gate is retriable: a transient DB failure (e.g. a
@@ -138,8 +149,18 @@ app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use('/api/analytics', analyticsLimiter, analyticsRoutes);
 app.use(generalLimiter);
 
-// Static files
-app.use(express.static(path.join(__dirname, 'client', 'dist')));
+// Static files. Hashed build output (client/dist/assets/*) is content-addressed
+// by Vite — cache it forever; index.html must always revalidate so a deploy
+// is picked up immediately.
+app.use(express.static(path.join(__dirname, 'client', 'dist'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
 
 // API Routes
 app.use('/api/auth', authLimiter, authRoutes);

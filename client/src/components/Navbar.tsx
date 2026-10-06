@@ -53,6 +53,10 @@ export default function Navbar() {
               <img
                 src="/logo/logo-full.png"
                 alt="IQIntern"
+                width={512}
+                height={418}
+                fetchPriority="high"
+                decoding="async"
                 className="h-20 md:h-24 w-auto mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
               />
             </Link>

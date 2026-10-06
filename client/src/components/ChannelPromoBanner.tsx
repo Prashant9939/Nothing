@@ -141,7 +141,7 @@ export default function ChannelPromoBanner() {
         {/* ---------- Left / stacked: brand + pitch ---------- */}
         <div className="relative z-10 px-6 pb-7 pt-7 sm:px-8 sm:pt-8 lg:pb-8">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-3 pr-12">
-            <img src="/logo/logo-trimmed.png" alt="IQIntern" className="h-9 w-auto" />
+            <img src="/logo/logo-trimmed.png" alt="IQIntern" width={512} height={188} loading="lazy" decoding="async" className="h-9 w-auto" />
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-200/70">
               <BadgeCheck size={14} className="text-emerald-600" />
               Official IQIntern Channel

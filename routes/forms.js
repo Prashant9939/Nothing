@@ -11,25 +11,16 @@ const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
-const db = require('../db');
-const { getSetting } = require('../lib/settings');
-const { companyName, companyAddress, cinLabel, footText, drawStamp, drawDisclaimer } = require('../lib/documentBrand');
+const { companyName, companyAddress, cinLabel, footText, drawStamp, drawDisclaimer, siteUrl } = require('../lib/documentBrand');
 
 const router = express.Router();
 
-// ===================== DESIGN SYSTEM (mirrors routes/documents.js) =====================
-const GREEN = {
-  dark: '#1C6954',
-  mid: '#20886C',
-  light: '#3A967B',
-  mint: '#A7E8D8',
-  wave: '#7ED0BB',
-  pale: '#F0F9F5',
-  stroke: '#CDEBE0',
-  ink: '#1F2937',
-  body: '#374151',
-  gray: '#6B7280',
-};
+// ===================== DESIGN SYSTEM =====================
+// Plain-letter palette: black text on a white page. Grey is used only for
+// faint input/writing rules — never as a background fill.
+const INK = '#000000';
+const RULE = '#9CA3AF';
+const RULE_LIGHT = '#E5E7EB';
 
 const LOGO_FILE = path.join(__dirname, '..', 'client', 'public', 'logo', 'logo-full.png');
 
@@ -52,55 +43,39 @@ function drawLogo(doc, x, y, height) {
   }
 }
 
-function drawWatermark(doc, text) {
-  const w = doc.page.width;
-  const h = doc.page.height;
-  const fs2 = Math.round(Math.min(w, h) * 0.14);
-  doc.save();
-  doc.font('Helvetica-Bold').fontSize(fs2);
-  doc.fillColor(GREEN.dark).fillOpacity(0.035);
-  doc.rotate(-30, { origin: [w / 2, h / 2] });
-  doc.text(text, 0, h / 2 - fs2 * 0.36, { width: w, align: 'center' });
-  doc.restore();
-}
-
 function drawBrand(doc, x, y) {
   const logoH = 80;
   const logoY = y - 36;
   const logoW = drawLogo(doc, x, logoY, logoH);
   if (logoW === null) {
-    doc.roundedRect(x, logoY, 56, 56, 11).fill(GREEN.dark);
-    doc.font('Helvetica-Bold').fontSize(26).fillColor('#fff').text('Z', x, logoY + 14, { width: 56, align: 'center' });
+    doc.lineWidth(1).strokeColor(INK).roundedRect(x, logoY, 56, 56, 11).stroke();
+    doc.font('Helvetica-Bold').fontSize(26).fillColor(INK).text('Z', x, logoY + 14, { width: 56, align: 'center' });
   }
   const tx = x + (logoW || 64) + (logoW ? 12 : 8);
-  doc.font('Helvetica-Bold').fontSize(15).fillColor(GREEN.dark).text(companyName(), tx, logoY + 24);
-  doc.font('Helvetica').fontSize(8).fillColor(GREEN.gray).text(companyAddress(), tx, logoY + 46);
+  doc.font('Helvetica-Bold').fontSize(15).fillColor(INK).text(companyName(), tx, logoY + 24);
+  doc.font('Helvetica').fontSize(8).fillColor(INK).text(companyAddress(), tx, logoY + 46);
   const cin = cinLabel();
-  if (cin) doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GREEN.mid).text(cin, tx, logoY + 58);
+  if (cin) doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text(cin, tx, logoY + 58);
 }
 
 function drawTitle(doc, title, y, opts = {}) {
   const w = doc.page.width;
   const size = opts.size || 24;
   const align = opts.align || 'left';
-  doc.font('Helvetica-Bold').fontSize(size).fillColor(GREEN.dark)
+  doc.font('Helvetica-Bold').fontSize(size).fillColor(INK)
     .text(title, 50, y, { width: w - 100, align });
   const tw = opts.ruleW || Math.min(doc.widthOfString(title, { font: 'Helvetica-Bold', size }), w - 100);
   const rx = align === 'center' ? (w - tw) / 2 : 50;
-  const g = doc.linearGradient(rx, 0, rx + tw, 0);
-  g.stop(0, GREEN.dark).stop(1, GREEN.wave);
-  doc.rect(rx, y + size + 10, tw, 3).fill(g);
+  doc.rect(rx, y + size + 10, tw, 1.5).fill(INK);
 }
 
 function drawFooter(doc) {
   const w = doc.page.width;
   const h = doc.page.height;
-  const g = doc.linearGradient(50, 0, w - 50, 0);
-  g.stop(0, GREEN.mint).stop(1, GREEN.wave);
-  doc.rect(50, h - 132, w - 100, 1.2).fill(g);
-  doc.font('Helvetica').fontSize(7).fillColor(GREEN.gray)
+  doc.lineWidth(0.8).strokeColor(INK).moveTo(50, h - 132).lineTo(w - 50, h - 132).stroke();
+  doc.font('Helvetica').fontSize(7).fillColor(INK)
     .text(footText(), 50, h - 126, { width: w - 100, align: 'center' });
-  drawDisclaimer(doc, h - 117, { size: 6.5 });
+  drawDisclaimer(doc, h - 117, { size: 6.5, color: INK });
 }
 
 // QR pointing at the public verification page — keeps the shared disclaimer
@@ -109,9 +84,9 @@ const VERIFY_BASE = (process.env.SITE_URL || `http://localhost:${process.env.POR
 
 async function makeVerifyQr() {
   try {
-    const base = ((await getSetting(db, 'siteUrl')) || VERIFY_BASE).replace(/\/+$/, '');
+    const base = (siteUrl() || VERIFY_BASE).replace(/\/+$/, '');
     return await QRCode.toBuffer(`${base}/certification`, {
-      margin: 1, width: 240, color: { dark: '#1C6954', light: '#FFFFFF' },
+      margin: 1, width: 240, color: { dark: INK, light: '#FFFFFF' },
     });
   } catch (e) {
     console.error('QR generation failed:', e.message);
@@ -121,18 +96,16 @@ async function makeVerifyQr() {
 
 function drawQrBadge(doc, qrBuffer, x, y, box = 58) {
   if (!qrBuffer) return;
-  doc.roundedRect(x, y, box, box, 8).fill('#ffffff').stroke(GREEN.stroke);
+  doc.roundedRect(x, y, box, box, 8).fill('#ffffff').stroke(INK);
   doc.image(qrBuffer, x + 6, y + 6, { width: box - 12 });
-  doc.font('Helvetica').fontSize(6.5).fillColor(GREEN.gray)
+  doc.font('Helvetica').fontSize(6.5).fillColor(INK)
     .text('Scan to verify', x - 12, y + box + 4, { width: box + 24, align: 'center' });
 }
 
 function sectionBar(doc, label, y) {
   const w = doc.page.width;
-  const g = doc.linearGradient(50, 0, w - 50, 0);
-  g.stop(0, GREEN.dark).stop(1, GREEN.light);
-  doc.roundedRect(50, y, w - 100, 22, 5).fill(g);
-  doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#fff').text(label, 62, y + 5.5, { width: w - 130 });
+  doc.font('Helvetica-Bold').fontSize(10.5).fillColor(INK).text(label, 50, y + 2, { width: w - 100 });
+  doc.lineWidth(0.8).strokeColor(INK).moveTo(50, y + 18).lineTo(w - 50, y + 18).stroke();
   return y + 30;
 }
 
@@ -145,12 +118,12 @@ const COL_W = () => (INNER_W() - 24) / 2;
 // Label + optional pre-filled value + writing line. Returns the y for the
 // next row. Blank forms leave the space above the line empty to write on.
 function field(doc, label, x, y, w, value) {
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GREEN.dark).text(label.toUpperCase(), x, y, { width: w });
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text(label.toUpperCase(), x, y, { width: w });
   if (value) {
-    doc.font('Helvetica').fontSize(10).fillColor(GREEN.ink)
+    doc.font('Helvetica').fontSize(10).fillColor(INK)
       .text(String(value), x, y + 9.5, { width: w, height: 13, ellipsis: true });
   }
-  doc.lineWidth(0.8).strokeColor('#9CA3AF');
+  doc.lineWidth(0.8).strokeColor(RULE);
   doc.moveTo(x, y + 24).lineTo(x + w, y + 24).stroke();
   return y + 34;
 }
@@ -170,17 +143,17 @@ function fieldGrid(doc, rows, y) {
 
 // Checkbox + wrapped statement. Returns the y below the item.
 function checkItem(doc, text, x, y, w) {
-  doc.lineWidth(1).strokeColor(GREEN.mid);
+  doc.lineWidth(1).strokeColor(INK);
   doc.roundedRect(x, y + 1, 11, 11, 2).stroke();
-  doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body);
+  doc.font('Helvetica').fontSize(9.5).fillColor(INK);
   doc.text(text, x + 20, y, { width: w - 20, lineGap: 2 });
   return doc.y + 9;
 }
 
 // Numbered declaration paragraph. Returns the y below it.
 function para(doc, num, text, y) {
-  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark).text(`${num}.`, L, y, { width: 16 });
-  doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body)
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text(`${num}.`, L, y, { width: 16 });
+  doc.font('Helvetica').fontSize(9.5).fillColor(INK)
     .text(text, L + 18, y, { width: INNER_W() - 18, lineGap: 2 });
   return doc.y + 9;
 }
@@ -188,9 +161,9 @@ function para(doc, num, text, y) {
 // Bordered comment box with ruled writing lines. Returns the y below it.
 function ruledBox(doc, y, h) {
   const w = INNER_W();
-  doc.lineWidth(0.9).strokeColor('#9CA3AF');
+  doc.lineWidth(0.9).strokeColor(RULE);
   doc.roundedRect(L, y, w, h, 6).stroke();
-  doc.lineWidth(0.5).strokeColor('#E5E7EB');
+  doc.lineWidth(0.5).strokeColor(RULE_LIGHT);
   for (let ly = y + 22; ly < y + h - 6; ly += 22) {
     doc.moveTo(L + 12, ly).lineTo(L + w - 12, ly).stroke();
   }
@@ -202,25 +175,25 @@ function ratingTable(doc, labels, y) {
   const w = INNER_W();
   const col = 40;
   const labelW = w - col * 5;
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(GREEN.gray).text('(1 = Poor  ·  5 = Excellent)', L, y, { width: labelW });
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('(1 = Poor  ·  5 = Excellent)', L, y, { width: labelW });
   y += 16;
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(GREEN.dark);
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(INK);
   for (let i = 0; i < 5; i++) {
     doc.text(String(i + 1), L + labelW + i * col, y, { width: col, align: 'center' });
   }
   y += 16;
-  doc.lineWidth(0.6).strokeColor(GREEN.stroke);
+  doc.lineWidth(0.6).strokeColor(INK);
   doc.moveTo(L, y).lineTo(L + w, y).stroke();
   const rowH = 24;
   for (const label of labels) {
-    doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body)
+    doc.font('Helvetica').fontSize(9.5).fillColor(INK)
       .text(label, L + 4, y + 7, { width: labelW - 8, height: 12, ellipsis: true });
     for (let i = 0; i < 5; i++) {
-      doc.lineWidth(0.9).strokeColor('#9CA3AF');
+      doc.lineWidth(0.9).strokeColor(RULE);
       doc.roundedRect(L + labelW + i * col + (col - 14) / 2, y + 5, 14, 14, 2).stroke();
     }
     y += rowH;
-    doc.lineWidth(0.5).strokeColor('#E5E7EB');
+    doc.lineWidth(0.5).strokeColor(RULE_LIGHT);
     doc.moveTo(L, y).lineTo(L + w, y).stroke();
   }
   return y + 10;
@@ -237,12 +210,12 @@ function signatureBlock(doc, y) {
     { label: 'Place', x: 385, w: 70 },
   ];
   for (const c of cols) {
-    doc.lineWidth(0.8).strokeColor('#9CA3AF');
+    doc.lineWidth(0.8).strokeColor(RULE);
     doc.moveTo(c.x, lineY).lineTo(c.x + c.w, lineY).stroke();
-    doc.font('Helvetica-Bold').fontSize(8).fillColor(GREEN.dark).text(c.label.toUpperCase(), c.x, lineY + 4, { width: c.w });
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text(c.label.toUpperCase(), c.x, lineY + 4, { width: c.w });
   }
   drawStamp(doc, 478, y + 4, 54);
-  doc.font('Helvetica').fontSize(7).fillColor(GREEN.gray)
+  doc.font('Helvetica').fontSize(7).fillColor(INK)
     .text('Authorised Signatory', 460, y + 60, { width: 96, align: 'center' });
   return Math.max(lineY + 16, y + 70);
 }
@@ -254,7 +227,7 @@ function defaultHeader(doc, form, qr) {
   drawBrand(doc, 50, 42);
   drawQrBadge(doc, qr, 474, 46, 58);
   drawTitle(doc, form.title, 92, { size: 24 });
-  doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.gray)
+  doc.font('Helvetica').fontSize(9.5).fillColor(INK)
     .text(form.subtitle, 50, 140, { width: INNER_W() });
   return 165;
 }
@@ -269,22 +242,34 @@ const FORMS = {
     header(doc, ctx) {
       const w = doc.page.width;
       const college = (ctx.student && ctx.student.college) || 'COLLEGE / INSTITUTION NAME';
+      // pdfkit's widthOfString() ignores {font,size} options — it measures
+      // with the *current* font/size, so set them first, then shrink.
+      doc.font('Helvetica-Bold');
       let size = 24;
-      while (size > 12 && doc.widthOfString(college, { font: 'Helvetica-Bold', size }) > w - 100) size -= 1;
-      doc.font('Helvetica-Bold').fontSize(size).fillColor(GREEN.dark)
-        .text(college, 50, 56, { width: w - 100, align: 'center' });
-      const nameW = Math.min(doc.widthOfString(college, { font: 'Helvetica-Bold', size }) + 40, w - 100);
+      doc.fontSize(size);
+      while (size > 12 && doc.widthOfString(college) > w - 100) {
+        size -= 1;
+        doc.fontSize(size);
+      }
+      doc.fillColor(INK).text(college, 50, 56, { width: w - 100, align: 'center' });
+      // Anchor everything below to the real text bottom (doc.y) so a name
+      // that wraps onto a second line is never struck through by the rule.
+      const bottom = doc.y;
+      const nameW = Math.min(doc.widthOfString(college) + 40, w - 100);
       const rx = (w - nameW) / 2;
-      const g = doc.linearGradient(rx, 0, rx + nameW, 0);
-      g.stop(0, GREEN.dark).stop(1, GREEN.wave);
-      doc.rect(rx, 56 + size * 1.3 + 6, nameW, 3).fill(g);
+      doc.rect(rx, bottom + 8, nameW, 1.5).fill(INK);
+
+      // Annexure reference under the college name heading
+      const ay = bottom + 18;
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(INK)
+        .text('ANNEXURE 1', 50, ay, { width: w - 100, align: 'center' });
 
       // Blank letter number + date for the college to fill in
-      const ry = 56 + size * 1.3 + 26;
-      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark).text('Ref. No.:', 50, ry, { width: 62 });
-      doc.lineWidth(0.8).strokeColor('#9CA3AF').moveTo(118, ry + 12).lineTo(300, ry + 12).stroke();
-      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark).text('Date:', 330, ry, { width: 46 });
-      doc.lineWidth(0.8).strokeColor('#9CA3AF').moveTo(382, ry + 12).lineTo(w - 50, ry + 12).stroke();
+      const ry = ay + 22;
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text('Ref. No.:', 50, ry, { width: 62 });
+      doc.lineWidth(0.8).strokeColor(RULE).moveTo(118, ry + 12).lineTo(300, ry + 12).stroke();
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text('Date:', 330, ry, { width: 46 });
+      doc.lineWidth(0.8).strokeColor(RULE).moveTo(382, ry + 12).lineTo(w - 50, ry + 12).stroke();
       return ry + 30;
     },
     render(doc, ctx, y) {
@@ -300,17 +285,17 @@ const FORMS = {
         : '';
 
       // Recipient
-      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark).text('To,', 50, y, { width: w - 100 });
-      doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.ink);
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text('To,', 50, y, { width: w - 100 });
+      doc.font('Helvetica').fontSize(9.5).fillColor(INK);
       doc.text('The Internship In-Charge,', 50, doc.y + 3, { width: w - 100 });
       doc.text(companyName(), 50, doc.y + 2, { width: w - 100 });
       doc.text(companyAddress(), 50, doc.y + 2, { width: w - 100 });
       y = doc.y + 12;
 
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(GREEN.dark)
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(INK)
         .text('Subject: Grant of permission to undergo internship training.', 50, y, { width: w - 100 });
       y = doc.y + 10;
-      doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body).text('Dear Sir / Madam,', 50, y);
+      doc.font('Helvetica').fontSize(9.5).fillColor(INK).text('Dear Sir / Madam,', 50, y);
       y = doc.y + 8;
 
       doc.text(`This is to certify that ${name}, a bonafide student of our institution, has been permitted to undergo the internship program "${ctx.title || 'the internship program'}" offered by ${companyName()} for a continuous period of ${days} days (${hours} working hours) as a part of the academic curriculum / training requirement of the course.`, 50, y, { width: w - 100, lineGap: 2 });
@@ -326,7 +311,7 @@ const FORMS = {
       ], y);
 
       y = sectionBar(doc, 'CONCLUSION', y + 6);
-      doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body)
+      doc.font('Helvetica').fontSize(9.5).fillColor(INK)
         .text(`In view of the above, you are requested to allow the student to complete the internship program as scheduled. Any communication in this regard may be addressed to the undersigned.`, 50, y, { width: w - 100, lineGap: 2 });
       y = doc.y + 6;
       doc.text('Thanking you,', 50, y, { width: w - 100 });
@@ -336,31 +321,31 @@ const FORMS = {
       y = sectionBar(doc, 'AUTHORISATION BY THE INSTITUTION', doc.y + 8);
       const bw = INNER_W();
       const bh = 116;
-      doc.lineWidth(1).strokeColor(GREEN.stroke).roundedRect(L, y, bw, bh, 6).stroke();
+      doc.lineWidth(1).strokeColor(INK).roundedRect(L, y, bw, bh, 6).stroke();
 
       const sx = L + 14, sy = y + 12, ss = 74;
       doc.save();
-      doc.lineWidth(0.9).strokeColor('#9CA3AF').dash(4, { space: 3 });
+      doc.lineWidth(0.9).strokeColor(RULE).dash(4, { space: 3 });
       doc.roundedRect(sx, sy, ss, ss, 4).stroke();
       doc.restore();
-      doc.font('Helvetica-Bold').fontSize(7).fillColor(GREEN.gray)
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(INK)
         .text('COLLEGE STAMP / SEAL', sx - 8, sy + ss + 5, { width: ss + 16, align: 'center' });
 
       const qr = ctx.qr;
       const qx = sx + ss + 14, qy = sy + 4;
       if (qr) {
-        doc.roundedRect(qx, qy, 54, 54, 6).fill('#ffffff').stroke(GREEN.stroke);
+        doc.roundedRect(qx, qy, 54, 54, 6).fill('#ffffff').stroke(INK);
         doc.image(qr, qx + 5, qy + 5, { width: 44 });
-        doc.font('Helvetica').fontSize(6.5).fillColor(GREEN.gray)
+        doc.font('Helvetica').fontSize(6.5).fillColor(INK)
           .text('Scan to verify', qx - 6, qy + 58, { width: 66, align: 'center' });
       }
 
       const lx = sx + ss + 84;
       const lw = L + bw - 14 - lx;
       const ly = y + 42;
-      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GREEN.dark)
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK)
         .text('SIGNATURE OF HOD / PRINCIPAL / INTERNSHIP NODAL OFFICER', lx, ly, { width: lw });
-      doc.lineWidth(0.8).strokeColor('#9CA3AF').moveTo(lx, ly + 22).lineTo(lx + lw, ly + 22).stroke();
+      doc.lineWidth(0.8).strokeColor(RULE).moveTo(lx, ly + 22).lineTo(lx + lw, ly + 22).stroke();
       return y + bh + 6;
     },
   },
@@ -386,7 +371,7 @@ const FORMS = {
       ], y);
 
       y = sectionBar(doc, 'COMMENTS & SUGGESTIONS', y + 8);
-      doc.font('Helvetica').fontSize(9).fillColor(GREEN.gray)
+      doc.font('Helvetica').fontSize(9).fillColor(INK)
         .text('What did you like the most? What can we improve?', L, y, { width: INNER_W() });
       y = doc.y + 8;
       y = ruledBox(doc, y, 48);
@@ -444,7 +429,6 @@ async function streamForm(res, key, ctx = {}) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename=${form.filename}`);
   doc.pipe(res);
-  drawWatermark(doc, 'IQINTERN');
   const body = { ...ctx, qr };
   const y = form.header ? form.header(doc, body) : defaultHeader(doc, form, qr);
   const finalY = form.render(doc, body, y);

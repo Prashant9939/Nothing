@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 
 interface Option {
   label: string;
@@ -24,10 +24,17 @@ export default function SearchableSelect({ id, options, value, onChange, placeho
 
   const selected = options.find(o => o.value === value);
 
-  const filtered = options.filter(o =>
-    o.label.toLowerCase().includes(query.toLowerCase()) ||
-    (o.sub && o.sub.toLowerCase().includes(query.toLowerCase()))
-  );
+  // Memoized + query lowered once: this re-runs per keystroke over up to 200
+  // options (universities/colleges), and rendering is capped so the list
+  // never mounts hundreds of buttons at once.
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase();
+    return options.filter(o =>
+      o.label.toLowerCase().includes(q) ||
+      (o.sub && o.sub.toLowerCase().includes(q))
+    );
+  }, [options, query]);
+  const visible = filtered.length > 200 ? filtered.slice(0, 200) : filtered;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -67,14 +74,21 @@ export default function SearchableSelect({ id, options, value, onChange, placeho
             {filtered.length === 0 ? (
               <div className="px-4 py-3 text-sm text-gray-500">No results found</div>
             ) : (
-              filtered.map((opt) => (
-                <button key={opt.value} type="button"
-                  onClick={() => { onChange(opt.value); setOpen(false); setQuery(''); }}
-                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-orange-50 transition-colors flex items-center justify-between ${opt.value === value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-700'}`}>
-                  <span className="truncate">{opt.label}</span>
-                  {opt.sub && <span className="text-xs text-gray-500 ml-2 shrink-0">{opt.sub}</span>}
-                </button>
-              ))
+              <>
+                {visible.map((opt) => (
+                  <button key={opt.value} type="button"
+                    onClick={() => { onChange(opt.value); setOpen(false); setQuery(''); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-orange-50 transition-colors flex items-center justify-between ${opt.value === value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-700'}`}>
+                    <span className="truncate">{opt.label}</span>
+                    {opt.sub && <span className="text-xs text-gray-500 ml-2 shrink-0">{opt.sub}</span>}
+                  </button>
+                ))}
+                {filtered.length > visible.length && (
+                  <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
+                    Showing first {visible.length} of {filtered.length} — keep typing to narrow down
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

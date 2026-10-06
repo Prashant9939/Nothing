@@ -11,42 +11,53 @@ export default function RevealOnScroll() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    const pending = () =>
-      Array.from(document.querySelectorAll<HTMLElement>('.reveal:not(.animate-in)'));
-    const targets = pending();
-    if (targets.length === 0) return;
+    // Track remaining elements in a Set instead of re-querying the DOM on
+    // every scroll frame (querySelectorAll + N getBoundingClientRect per
+    // frame was a forced synchronous layout on each rAF while scrolling).
+    const pending = new Set<HTMLElement>(
+      Array.from(document.querySelectorAll<HTMLElement>('.reveal:not(.animate-in)'))
+    );
+    if (pending.size === 0) return;
 
     if (!('IntersectionObserver' in window)) {
-      targets.forEach((el) => el.classList.add('animate-in'));
+      pending.forEach((el) => el.classList.add('animate-in'));
       return;
     }
+
+    let raf = 0;
+    const onScroll = () => {
+      if (!raf && pending.size > 0) raf = requestAnimationFrame(sweep);
+    };
+
+    const reveal = (el: HTMLElement) => {
+      pending.delete(el);
+      el.classList.add('animate-in');
+      observer.unobserve(el);
+      if (pending.size === 0) {
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        window.removeEventListener('scroll', onScroll);
+      }
+    };
 
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('animate-in');
-            observer.unobserve(entry.target);
-          }
+          if (entry.isIntersecting) reveal(entry.target as HTMLElement);
         });
       },
       { threshold: 0.08 }
     );
-    targets.forEach((el) => observer.observe(el));
+    pending.forEach((el) => observer.observe(el));
 
-    let raf = 0;
     const sweep = () => {
       raf = 0;
-      pending().forEach((el) => {
+      // Read all rects first, then write classes — keeps layout thrash to one pass.
+      const hits: HTMLElement[] = [];
+      pending.forEach((el) => {
         const rect = el.getBoundingClientRect();
-        if (rect.top < window.innerHeight * 0.92 && rect.bottom > 0) {
-          el.classList.add('animate-in');
-          observer.unobserve(el);
-        }
+        if (rect.top < window.innerHeight * 0.92 && rect.bottom > 0) hits.push(el);
       });
-    };
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(sweep);
+      hits.forEach(reveal);
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     sweep();

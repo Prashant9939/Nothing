@@ -10,7 +10,9 @@
 const { Pool, types } = require('pg');
 const { AsyncLocalStorage } = require('async_hooks');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { BCRYPT_COST } = require('./lib/passwordPolicy');
+const { DEFAULTS: SETTINGS_DEFAULTS } = require('./lib/settings');
 
 // COUNT/SUM come back as int8/numeric strings by default — keep them numbers
 // so API responses and === 0 / comparisons behave exactly like SQLite did.
@@ -46,11 +48,26 @@ const { uri: connectionString, wantsSsl } = normalizeDbUrl(rawConnectionString);
 const pool = new Pool({
   connectionString,
   ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
-  max: 10,
+  // Parallelized handlers issue several queries per request (Promise.all), so
+  // the pool needs headroom; 10 used to queue under two concurrent dashboards.
+  max: Number(process.env.PG_POOL_MAX) > 0 ? Number(process.env.PG_POOL_MAX) : 20,
   idleTimeoutMillis: 30000,
   // Fail fast on a dropped/hung TLS handshake instead of waiting for the
   // serverless timeout — the retriable init gate (server.js) then retries.
   connectionTimeoutMillis: 10000,
+  // Kill runaway statements instead of letting them pin a pooled connection (a
+  // slow seq scan would otherwise queue every other query behind it). A startup
+  // `options: '-c ...'` parameter is ignored by Supabase's pooler, so the
+  // timeout is SET once per freshly opened backend — pg-pool's `verify` runs
+  // before the connection is handed to its first borrower.
+  verify: (client, done) => {
+    // 15s (overridable): a runaway statement must not pin a pooled connection
+    // for a minute while dashboards queue behind it.
+    const ms = Number(process.env.PG_STATEMENT_TIMEOUT_MS) > 0
+      ? Number(process.env.PG_STATEMENT_TIMEOUT_MS)
+      : 15000;
+    client.query(`SET statement_timeout = ${ms}`, (err) => done(err));
+  },
 });
 pool.on('error', (err) => console.error('Postgres pool error:', err.message));
 
@@ -330,126 +347,235 @@ await db.exec(`
   CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(createdAt);
   CREATE INDEX IF NOT EXISTS idx_analytics_visitor ON analytics_events(visitorId);
   CREATE INDEX IF NOT EXISTS idx_contact_messages_status ON contact_messages(status);
+
+  -- Settings for attendance dating, document branding, verification link etc.
+  CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+  -- Serves the expired-session DELETE below (was a seq scan on every boot).
+  CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expiresAt);
+
+  -- Analytics events older than 90 days are dropped on startup (table stays small)
+  DELETE FROM analytics_events WHERE createdAt < to_char(now() - interval '90 days', 'YYYY-MM-DD HH24:MI:SS');
+
+  -- Same for expired JWT session rows: rows die with the token exp claim,
+  -- so the table never grows past active sessions.
+  DELETE FROM sessions WHERE expiresAt < to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS');
+
+  -- Settings defaults folded into this batch (one round trip per boot instead
+  -- of a separate INSERT; ON CONFLICT DO NOTHING keeps it idempotent).
+  ${(() => {
+    const entries = Object.entries(SETTINGS_DEFAULTS);
+    if (!entries.length) return '';
+    const q = (v) => `'${String(v == null ? '' : v).replace(/'/g, "''")}'`;
+    return `INSERT INTO settings (key, value) VALUES ${entries.map(([k, v]) => `(${q(k)}, ${q(v)})`).join(', ')} ON CONFLICT DO NOTHING;`;
+  })()}
 `);
 
-// Analytics events older than 90 days are dropped on startup to keep the table small
-await db.exec("DELETE FROM analytics_events WHERE createdAt < to_char(now() - interval '90 days', 'YYYY-MM-DD HH24:MI:SS')");
+// Everything below is gated behind a schema signature (see SCHEMA_VERSION):
+// each statement above and the block below used to run on EVERY boot, costing
+// one remote round trip each — with a ~330ms RTT to the pooler that was a
+// 40s+ cold start. The signature hashes the migration/index/backfill SQL, so
+// editing any of it automatically re-runs the whole block once.
 
-// Same for expired JWT session rows (revocation registry) — rows die with the
-// token's exp claim, so the table never grows past active sessions.
-await db.run('DELETE FROM sessions WHERE expiresAt < ?', new Date().toISOString().slice(0, 19).replace('T', ' '));
-
-// Migration: add columns if missing
+// Migration: add columns if missing. IF NOT EXISTS makes each statement a
+// no-op when current, so the whole batch runs as ONE round trip (it used to
+// be one round trip per statement — 20 RTTs to the remote pooler).
 const migrations = [
-  'ALTER TABLE users ADD COLUMN university TEXT DEFAULT \'\'',
-  'ALTER TABLE users ADD COLUMN gender TEXT DEFAULT \'\'',
-  'ALTER TABLE users ADD COLUMN dob TEXT DEFAULT \'\'',
-  'ALTER TABLE users ADD COLUMN rollNo TEXT DEFAULT \'\'',
-  'ALTER TABLE users ADD COLUMN regNo TEXT DEFAULT \'\'',
-  'ALTER TABLE users ADD COLUMN guardianName TEXT DEFAULT \'\'',
-  'ALTER TABLE users ADD COLUMN guardianPhone TEXT DEFAULT \'\'',
-  'ALTER TABLE users ADD COLUMN guardianRelation TEXT DEFAULT \'\'',
-  'ALTER TABLE enrollments ADD COLUMN offerNo TEXT',
-  'ALTER TABLE enrollments ADD COLUMN reportNo TEXT',
-  'ALTER TABLE enrollments ADD COLUMN attendanceNo TEXT',
-  'ALTER TABLE enrollments ADD COLUMN attendanceDateMode TEXT DEFAULT \'forward\'',
-  'ALTER TABLE users ADD COLUMN createdByAdmin INTEGER DEFAULT 0',
-  'ALTER TABLE payments ADD COLUMN razorpayOrderId TEXT',
-  'ALTER TABLE payments ADD COLUMN razorpayPaymentId TEXT',
-  'ALTER TABLE payments ADD COLUMN internshipId INTEGER',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS university TEXT DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS dob TEXT DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS rollNo TEXT DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS regNo TEXT DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS guardianName TEXT DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS guardianPhone TEXT DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS guardianRelation TEXT DEFAULT \'\'',
+  'ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS offerNo TEXT',
+  'ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS reportNo TEXT',
+  'ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS attendanceNo TEXT',
+  'ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS attendanceDateMode TEXT DEFAULT \'forward\'',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS createdByAdmin INTEGER DEFAULT 0',
+  'ALTER TABLE payments ADD COLUMN IF NOT EXISTS razorpayOrderId TEXT',
+  'ALTER TABLE payments ADD COLUMN IF NOT EXISTS razorpayPaymentId TEXT',
+  'ALTER TABLE payments ADD COLUMN IF NOT EXISTS internshipId INTEGER',
   // Payment time limit: pending invoices expire and become 'failed'.
-  'ALTER TABLE payments ADD COLUMN expiresAt TEXT',
+  'ALTER TABLE payments ADD COLUMN IF NOT EXISTS expiresAt TEXT',
   // Invoice-before-enrollment flow: payments start with no enrollmentId
   // (SQLite always allowed NULL here; PG was created NOT NULL by mistake).
   'ALTER TABLE payments ALTER COLUMN enrollmentId DROP NOT NULL',
   // Exam attempts record the exact questions served so grading uses the
   // served set as denominator, not every active question in the track.
-  'ALTER TABLE exams ADD COLUMN servedQuestionIds TEXT',
-  // Admin refund marks the enrollment 'refunded' (revoked) — the original
-  // CHECK only allowed pending/active/completed/expired.
-  `ALTER TABLE enrollments DROP CONSTRAINT IF EXISTS enrollments_status_check,
-   ADD CONSTRAINT enrollments_status_check CHECK (status IN ('pending', 'active', 'completed', 'expired', 'refunded'))`,
+  'ALTER TABLE exams ADD COLUMN IF NOT EXISTS servedQuestionIds TEXT',
 ];
-for (const sql of migrations) {
-  try { await db.exec(sql); } catch (_) { /* column already exists */ }
-}
+// Admin refund marks the enrollment 'refunded' (revoked) — the original CHECK
+// only allowed pending/active/completed/expired. Kept OUT of the batch:
+// ADD CONSTRAINT validates data, and a legacy row violating it must not roll
+// back the column adds above.
+const CONSTRAINT_SQL = `ALTER TABLE enrollments DROP CONSTRAINT IF EXISTS enrollments_status_check,
+   ADD CONSTRAINT enrollments_status_check CHECK (status IN ('pending', 'active', 'completed', 'expired', 'refunded'))`;
 
-// Payment time limit: give legacy pending invoices a deadline (createdAt +
-// PAYMENT_TIME_LIMIT_MINUTES), then fail everything already past it. Rows
-// whose createdAt can't be parsed get a fresh window from now so no pending
-// payment can live forever.
-const PAYMENT_TIME_LIMIT_MINUTES = (() => {
-  const n = Number(process.env.PAYMENT_TIME_LIMIT_MINUTES);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 30;
-})();
-try {
-  await db.run(`
+// Perf indexes — placed after the migrations because several reference columns
+// those migrations add (regNo, offerNo, ...). Covers columns that are filtered
+// or sorted on every request but used to seq-scan:
+const PERF_INDEXES_SQL = `
+  CREATE INDEX IF NOT EXISTS idx_exams_enrollment ON exams(enrollmentId);
+  CREATE INDEX IF NOT EXISTS idx_exams_status ON exams(status);
+  CREATE INDEX IF NOT EXISTS idx_certificates_enrollment ON certificates(enrollmentId);
+  CREATE INDEX IF NOT EXISTS idx_payments_status_paid ON payments(status, paidAt);
+  CREATE INDEX IF NOT EXISTS idx_enrollments_status ON enrollments(status);
+  CREATE INDEX IF NOT EXISTS idx_enrollments_offer_no ON enrollments(offerNo);
+  CREATE INDEX IF NOT EXISTS idx_enrollments_report_no ON enrollments(reportNo);
+  CREATE INDEX IF NOT EXISTS idx_enrollments_attendance_no ON enrollments(attendanceNo);
+  CREATE INDEX IF NOT EXISTS idx_users_created ON users(createdAt);
+  CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
+  CREATE INDEX IF NOT EXISTS idx_internships_active ON internships(isActive);
+  -- Functional indexes: the login/verify lookups wrap columns in lower()/trim()/
+  -- UPPER()/replace(), which defeats any plain index on the same column.
+  CREATE INDEX IF NOT EXISTS idx_users_lower_email ON users(lower(email));
+  CREATE INDEX IF NOT EXISTS idx_users_lower_trim_email ON users(lower(trim(email)));
+  CREATE INDEX IF NOT EXISTS idx_users_lower_reg_no ON users(lower(trim(regNo)));
+  CREATE INDEX IF NOT EXISTS idx_users_lower_roll_no ON users(lower(trim(rollNo)));
+  CREATE INDEX IF NOT EXISTS idx_users_phone_compact ON users(replace(replace(phone, ' ', ''), '-', ''));
+  CREATE INDEX IF NOT EXISTS idx_certificates_cert_upper ON certificates(UPPER(certificateId));
+  CREATE INDEX IF NOT EXISTS idx_payments_receipt_upper ON payments(UPPER(receiptNumber));
+  -- Admin list sort keys (all these endpoints ORDER BY ... DESC with no LIMIT
+  -- cover index for the sort → per-row sort cost grew with table size).
+  CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(createdAt);
+  CREATE INDEX IF NOT EXISTS idx_enrollments_enrolled ON enrollments(enrolledAt);
+  CREATE INDEX IF NOT EXISTS idx_certificates_issued ON certificates(issuedAt);
+  CREATE INDEX IF NOT EXISTS idx_contact_messages_created ON contact_messages(createdAt, id);
+  -- Report averages per internship + analytics top-pages grouping.
+  CREATE INDEX IF NOT EXISTS idx_exams_internship ON exams(internshipId);
+  CREATE INDEX IF NOT EXISTS idx_analytics_created_path ON analytics_events(createdAt, path);
+`;
+
+// Legacy-data healing statements kept as consts: SCHEMA_VERSION below hashes
+// their exact text, so editing any of them re-runs the gated block once.
+const BACKFILL_SQL = {
+  expiryFromCreatedAt: `
     UPDATE payments
     SET expiresAt = to_char(createdAt::timestamp + (? || ' minutes')::interval, 'YYYY-MM-DD HH24:MI:SS')
     WHERE status = 'pending' AND expiresAt IS NULL AND createdAt ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} '
-  `, String(PAYMENT_TIME_LIMIT_MINUTES));
-} catch (err) {
-  // Unparseable legacy createdAt — the statement below gives them a fresh window instead.
-  console.error('Payment expiry backfill (createdAt) failed:', err.message);
-}
-try {
-  await db.run(`
+  `,
+  expiryFromNow: `
     UPDATE payments
     SET expiresAt = to_char(now() at time zone 'UTC' + (? || ' minutes')::interval, 'YYYY-MM-DD HH24:MI:SS')
     WHERE status = 'pending' AND expiresAt IS NULL
-  `, String(PAYMENT_TIME_LIMIT_MINUTES));
-  await db.run(`
+  `,
+  expireSweep: `
     UPDATE payments
     SET status = 'failed'
     WHERE status = 'pending' AND expiresAt <= to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS')
-  `);
-} catch (err) {
-  console.error('Payment expiry backfill failed:', err.message);
-}
-
-// One open invoice per (user, track). The enroll route already reuses pending
-// invoices, but concurrent requests could still stack duplicates — and paying
-// a duplicate later fails provisioning with a UNIQUE violation, stranding the
-// captured charge. Fail older duplicates first, then enforce it in the DB.
-try {
-  await db.run(`
+  `,
+  failDuplicatePending: `
     UPDATE payments
     SET status = 'failed'
     WHERE status = 'pending'
       AND id NOT IN (
         SELECT MAX(id) FROM payments WHERE status = 'pending' GROUP BY userId, internshipId
       )
-  `);
-  await db.exec(`
+  `,
+  uniquePendingIndex: `
     CREATE UNIQUE INDEX IF NOT EXISTS uniq_payments_pending_user_track
     ON payments (userId, internshipId) WHERE status = 'pending'
-  `);
-} catch (err) {
-  console.error('Pending-invoice unique index failed:', err.message);
-}
-
-// Admin settings (attendance dating, document branding, verification link)
-await db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
-const { DEFAULTS: SETTINGS_DEFAULTS } = require('./lib/settings');
-for (const [key, value] of Object.entries(SETTINGS_DEFAULTS)) {
-  await db.run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT DO NOTHING', key, value);
-}
-
-
-// Assign unique, non-sequential document numbers to existing records
+  `,
+  legacyReceipts: "SELECT id FROM payments WHERE receiptNumber IS NULL OR receiptNumber NOT LIKE 'IQI-REC-____-______'",
+};
 const { DOC_COLUMNS, makeNumber, newReceiptNumber } = require('./lib/docNumbers');
-for (const [column, prefix] of Object.entries(DOC_COLUMNS)) {
-  const missing = await db.all(`SELECT id FROM enrollments WHERE ${column} IS NULL OR ${column} = ''`);
-  for (const { id } of missing) {
-    const no = await makeNumber(db, prefix, column, 'enrollments');
-    await db.run(`UPDATE enrollments SET ${column} = ? WHERE id = ?`, no, id);
+
+// Signature over every schema/healing statement above — change any of them
+// (or DOC_COLUMNS) and the whole gated block re-runs exactly once; otherwise
+// steady-state boots skip it. Seeds are NOT hashed: they are self-gating
+// (count/marker checks) and always run below.
+const SCHEMA_VERSION = crypto.createHash('sha256')
+  .update(JSON.stringify({ migrations, CONSTRAINT_SQL, PERF_INDEXES_SQL, BACKFILL_SQL, DOC_COLUMNS }))
+  .digest('hex')
+  .slice(0, 20);
+let appliedVersion = null;
+try {
+  appliedVersion = (await db.get("SELECT value FROM settings WHERE key = 'initVersion'"))?.value;
+} catch (_) { /* settings table missing — treated as not yet initialized */ }
+
+// Settings defaults are inserted inside the main DDL batch above (same round
+// trip), so nothing to do here — a row deleted by hand is re-added on the
+// next boot by that batch.
+
+if (appliedVersion !== SCHEMA_VERSION) {
+  // ——— schema & legacy-data block: runs once per schema version ———
+  try {
+    await db.exec(migrations.join(';\n'));
+  } catch (err) {
+    console.error('Migration batch failed:', err.message);
   }
+  try {
+    await db.exec(CONSTRAINT_SQL);
+  } catch (_) { /* legacy rows may violate the new CHECK — keep the old one */ }
+  await db.exec(PERF_INDEXES_SQL);
+
+  // Payment time limit: give legacy pending invoices a deadline (createdAt +
+  // PAYMENT_TIME_LIMIT_MINUTES), then fail everything already past it. Rows
+  // whose createdAt can't be parsed get a fresh window from now so no pending
+  // payment can live forever.
+  const PAYMENT_TIME_LIMIT_MINUTES = (() => {
+    const n = Number(process.env.PAYMENT_TIME_LIMIT_MINUTES);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 30;
+  })();
+  try {
+    await db.run(BACKFILL_SQL.expiryFromCreatedAt, String(PAYMENT_TIME_LIMIT_MINUTES));
+  } catch (err) {
+    // Unparseable legacy createdAt — the statement below gives them a fresh window instead.
+    console.error('Payment expiry backfill (createdAt) failed:', err.message);
+  }
+  try {
+    await db.run(BACKFILL_SQL.expiryFromNow, String(PAYMENT_TIME_LIMIT_MINUTES));
+    await db.run(BACKFILL_SQL.expireSweep);
+  } catch (err) {
+    console.error('Payment expiry backfill failed:', err.message);
+  }
+
+  // One open invoice per (user, track). The enroll route already reuses pending
+  // invoices, but concurrent requests could still stack duplicates — and paying
+  // a duplicate later fails provisioning with a UNIQUE violation, stranding the
+  // captured charge. Fail older duplicates first, then enforce it in the DB.
+  try {
+    await db.run(BACKFILL_SQL.failDuplicatePending);
+    await db.exec(BACKFILL_SQL.uniquePendingIndex);
+  } catch (err) {
+    console.error('Pending-invoice unique index failed:', err.message);
+  }
+
+  // Assign unique, non-sequential document numbers to existing records
+  for (const [column, prefix] of Object.entries(DOC_COLUMNS)) {
+    const missing = await db.all(`SELECT id FROM enrollments WHERE ${column} IS NULL OR ${column} = ''`);
+    for (const { id } of missing) {
+      const no = await makeNumber(db, prefix, column, 'enrollments');
+      await db.run(`UPDATE enrollments SET ${column} = ? WHERE id = ?`, no, id);
+    }
+  }
+  // Normalize legacy receipt numbers (timestamp-based) to the standard format
+  const legacyReceipts = await db.all(BACKFILL_SQL.legacyReceipts);
+  for (const { id } of legacyReceipts) {
+    await db.run('UPDATE payments SET receiptNumber = ? WHERE id = ?', await newReceiptNumber(db), id);
+  }
+
+  // One-time normalization: the old checkout created enrollments at 100%
+  // progress for tracks that had no published learning modules (rendered as
+  // completed tracks with an unlocked exam). Reset those to 0% — progress is
+  // derived from completed modules only. Runs with the gated block instead of
+  // on every boot (it used to be an extra round trip + seq scan per boot).
+  await db.run(`
+    UPDATE enrollments SET progress = 0
+    WHERE progress = 100
+      AND internshipId NOT IN (SELECT DISTINCT internshipId FROM learning_modules)
+  `);
+
+  // Record the version only after the whole block succeeded — a failure leaves
+  // the old marker in place, so the next boot retries it in full.
+  await db.run(
+    `INSERT INTO settings (key, value) VALUES ('initVersion', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    SCHEMA_VERSION,
+  );
 }
-// Normalize legacy receipt numbers (timestamp-based) to the standard format
-const legacyReceipts = await db.all("SELECT id FROM payments WHERE receiptNumber IS NULL OR receiptNumber NOT LIKE 'IQI-REC-____-______'");
-for (const { id } of legacyReceipts) {
-  await db.run('UPDATE payments SET receiptNumber = ? WHERE id = ?', await newReceiptNumber(db), id);
-}
+// ——— end schema & legacy-data block ———
 
 // Seed admin user if not exists
 const adminEmail = process.env.ADMIN_EMAIL || 'admin@iqintern.in';
@@ -457,10 +583,21 @@ const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_PASSWORD) {
   console.warn('WARNING: ADMIN_PASSWORD is not set — the seeded admin account uses an insecure default. Set ADMIN_PASSWORD in .env and change the password after first login.');
 }
-const adminExists = await db.get('SELECT id FROM users WHERE email = ?', adminEmail);
-if (!adminExists) {
-  const salt = bcrypt.genSaltSync(BCRYPT_COST);
-  const hashedPassword = bcrypt.hashSync(adminPassword, salt);
+
+// Everything the seed pass below needs in ONE round trip: table counts, the
+// admin existence check, existing titles (extra-internship dedupe) and the
+// learning-module coverage count. These used to be 4 separate SELECTs.
+const seedCounts = await db.get(`
+  SELECT
+    (SELECT COUNT(*) FROM internships) AS internships,
+    (SELECT COUNT(*) FROM universities) AS universities,
+    (SELECT COUNT(*) FROM internships WHERE id NOT IN (SELECT DISTINCT internshipId FROM learning_modules)) AS tracksMissing,
+    (SELECT json_agg(title) FROM internships) AS titles,
+    EXISTS(SELECT 1 FROM users WHERE email = ?) AS adminExists
+`, adminEmail);
+
+if (!seedCounts.adminExists) {
+  const hashedPassword = await bcrypt.hash(adminPassword, BCRYPT_COST);
   await db.run(`
     INSERT INTO users (firstName, lastName, email, phone, college, course, year, password, role)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -468,9 +605,7 @@ if (!adminExists) {
   console.log(`Admin user created: ${adminEmail}`);
 }
 
-// Seed internships if empty
-const internshipCount = await db.get('SELECT COUNT(*) as count FROM internships');
-if (internshipCount.count === 0) {
+if (seedCounts.internships === 0) {
   const internships = [
     { title: 'Web Development Pathway', description: 'Master HTML, CSS, JavaScript, React, Node.js, and build full-stack applications with database integration.', category: 'web', duration: 28, price: 2999, originalPrice: 5999, modules: 10, topics: 'HTML5,CSS3,JavaScript,React,Node.js,MongoDB' },
     { title: 'Python Software Engineering', description: 'Learn Python programming, OOP, data structures, file handling, and build backend APIs with Flask/Django.', category: 'python', duration: 28, price: 2999, originalPrice: 5999, modules: 8, topics: 'Python Basics,OOP,Data Structures,Flask,Django,APIs' },
@@ -496,16 +631,19 @@ const extraInternships = [
   { title: 'Tourism & Hospitality Management', description: 'Explore travel planning, hotel operations, front office and housekeeping, tourism marketing and customer service excellence.', category: 'tourism', duration: 28, price: 2999, originalPrice: 5999, modules: 8, topics: 'Travel Planning,Hospitality Operations,Tourism Marketing,Customer Service,Cultural Heritage,Hotel Management' },
 ];
 const insertExtraInternship = ('INSERT INTO internships (title, description, category, duration, price, originalPrice, modules, topics) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+// Titles already fetched in the merged seedCounts query above (no extra RTT)
+const knownTitles = new Set(seedCounts.titles || []);
+let insertedExtra = 0;
 for (const i of extraInternships) {
-  const exists = await db.get('SELECT id FROM internships WHERE title = ?', i.title);
-  if (!exists) {
+  if (!knownTitles.has(i.title)) {
     await db.run(insertExtraInternship, i.title, i.description, i.category, i.duration, i.price, i.originalPrice, i.modules, i.topics);
+    insertedExtra++;
     console.log(`Seeded internship: ${i.title}`);
   }
 }
 
 // Seed universities & colleges if empty
-const universityCount = (await db.get('SELECT COUNT(*) as count FROM universities')).count;
+const universityCount = seedCounts.universities;
 if (universityCount === 0) {
   const institutions = require('./data/institutions');
   const insertUniversity = ('INSERT INTO universities (name, shortName, location, type) VALUES (?, ?, ?, ?)');
@@ -536,14 +674,11 @@ const { seedQuestions } = require('./data/seedQuestions');
 await seedQuestions(db);
 
 // Seed learning modules. Per-track and idempotent: the block runs whenever
-// ANY track still has no modules, and the insert below only inserts tracks
-// that currently have zero rows. Adding content for a new track therefore
-// backfills an existing database without ever duplicating tracks seeded before.
-const tracksMissingModules = (await db.get(`
-  SELECT COUNT(*) AS count FROM internships
-  WHERE id NOT IN (SELECT DISTINCT internshipId FROM learning_modules)
-`)).count;
-if (tracksMissingModules > 0) {
+// ANY track still has no modules (count prefetched in seedCounts), and the
+// insert below only inserts tracks that currently have zero rows. Adding
+// content for a new track therefore backfills an existing database without
+// ever duplicating tracks seeded before.
+if (seedCounts.internships === 0 || seedCounts.tracksMissing > 0 || insertedExtra > 0) {
   // Look up each internship by title
   const webDev = await db.get("SELECT id FROM internships WHERE title = 'Web Development Pathway'");
   const python = await db.get("SELECT id FROM internships WHERE title = 'Python Software Engineering'");
@@ -1373,16 +1508,6 @@ if (tracksMissingModules > 0) {
     console.log(`Seed learning modules created: ${pendingModules.length} modules`);
   }
 }
-
-// One-time normalization: the old checkout created enrollments at 100% progress
-// for tracks that had no published learning modules, which rendered them as
-// completed tracks with an unlocked exam. Reset those to 0% — progress is
-// derived from completed modules only.
-await db.run(`
-  UPDATE enrollments SET progress = 0
-  WHERE progress = 100
-    AND internshipId NOT IN (SELECT DISTINCT internshipId FROM learning_modules)
-`);
 
 console.log('Database initialized successfully');
 };

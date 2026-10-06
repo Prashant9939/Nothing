@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PopupProvider } from './context/PopupContext';
 import Layout from './components/Layout';
@@ -9,18 +9,20 @@ import OfflineGate from './components/OfflineGate';
 import AnalyticsTracker from './components/AnalyticsTracker';
 import RevealOnScroll from './components/RevealOnScroll';
 import { Spinner } from './components/ui';
+// Home stays eager (largest contentful paint); every other public page is
+// code-split so first paint only downloads what that route needs.
 import Home from './pages/Home';
-import Login from './pages/Login';
-import ForgotPassword from './pages/ForgotPassword';
-import Register from './pages/Register';
-import Programs from './pages/Programs';
-import VerifyCertificate from './pages/VerifyCertificate';
-import About from './pages/About';
-import Contact from './pages/Contact';
-import NotFound from './pages/NotFound';
-import Terms from './pages/Terms';
-import Privacy from './pages/Privacy';
-import FAQ from './pages/FAQ';
+const Login = lazy(() => import('./pages/Login'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const Register = lazy(() => import('./pages/Register'));
+const Programs = lazy(() => import('./pages/Programs'));
+const VerifyCertificate = lazy(() => import('./pages/VerifyCertificate'));
+const About = lazy(() => import('./pages/About'));
+const Contact = lazy(() => import('./pages/Contact'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const Terms = lazy(() => import('./pages/Terms'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const FAQ = lazy(() => import('./pages/FAQ'));
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 const AdminAnalytics = lazy(() => import('./pages/admin/Analytics'));
 const AdminInternships = lazy(() => import('./pages/admin/Internships'));
@@ -34,7 +36,7 @@ const AdminIssues = lazy(() => import('./pages/admin/Issues'));
 const AdminQuestions = lazy(() => import('./pages/admin/Questions'));
 const AdminSettings = lazy(() => import('./pages/admin/Settings'));
 const AdminLayout = lazy(() => import('./components/AdminLayout'));
-import StudentLayout from './components/StudentLayout';
+const StudentLayout = lazy(() => import('./components/StudentLayout'));
 
 const StudentDashboard = lazy(() => import('./pages/student/Dashboard'));
 const SelectTrack = lazy(() => import('./pages/student/SelectTrack'));
@@ -58,16 +60,34 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode; role?: 
   return <>{children}</>;
 }
 
+// Routes to /login when api.ts reports an expired session (auth:expired),
+// so public pages leave SPA-side instead of never redirecting.
+function SessionWatcher() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const onExpired = () => navigate('/login', { replace: true });
+    window.addEventListener('auth:expired', onExpired);
+    return () => window.removeEventListener('auth:expired', onExpired);
+  }, [navigate]);
+  return null;
+}
+
+const routeFallback = (
+  <div className="flex h-screen items-center justify-center"><Spinner size={36} /></div>
+);
+
 function App() {
   return (
     <AuthProvider>
       <PopupProvider>
         <Router>
+          <SessionWatcher />
           <IdleLogout />
           <ContentProtection />
           <AnalyticsTracker />
           <RevealOnScroll />
           <OfflineGate>
+            <Suspense fallback={routeFallback}>
             <Routes>
             {/* Public Routes */}
             <Route path="/" element={<Layout><Home /></Layout>} />
@@ -111,6 +131,7 @@ function App() {
               <Route path="edit-profile" element={<EditProfile />} />
             </Route>
             </Routes>
+            </Suspense>
           </OfflineGate>
         </Router>
       </PopupProvider>

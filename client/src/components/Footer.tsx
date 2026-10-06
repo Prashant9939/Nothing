@@ -16,6 +16,10 @@ export default function Footer() {
               <img
                 src="/logo/white-logo.png.png"
                 alt="IQIntern"
+                width={384}
+                height={313}
+                loading="lazy"
+                decoding="async"
                 className="h-16 md:h-20 w-auto"
               />
             </Link>

@@ -5,7 +5,7 @@ import { studentApi } from '../../api';
 import type { Enrollment, Payment, Exam, Certificate } from '../../api';
 import { usePopup } from '../../context/PopupContext';
 import { useAuth } from '../../context/AuthContext';
-import { PageLoader, EmptyState, Button, Card, Badge } from '../ui';
+import { PageSkeleton, EmptyState, Button, Card, Badge } from '../ui';
 import DocCard from './DocCard';
 
 const primaryLink = 'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40';
@@ -94,7 +94,7 @@ export default function DocumentsList() {
 
   const header = <h1 className="sr-only">Documents</h1>;
 
-  if (loading) return <>{header}<PageLoader label="Loading your documents..." /></>;
+  if (loading) return <>{header}<PageSkeleton label="Loading your documents..." /></>;
 
   if (loadError) {
     return (

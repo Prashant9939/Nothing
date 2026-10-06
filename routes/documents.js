@@ -5,7 +5,6 @@ const db = require('../db');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 const { ensureEnrollmentNumber } = require('../lib/docNumbers');
-const { getSetting } = require('../lib/settings');
 const {
   companyName,
   companyAddress,
@@ -14,6 +13,8 @@ const {
   footText,
   drawStamp,
   drawDisclaimer,
+  siteUrl,
+  attendanceDateMode,
 } = require('../lib/documentBrand');
 const { getReportContent } = require('../data/reportContent');
 const { streamReport } = require('../lib/reportPdf');
@@ -24,14 +25,18 @@ const router = express.Router();
 
 const hasPaidAccess = async (enrollmentId, userId) => !!await db.get("SELECT 1 FROM payments WHERE enrollmentId = ? AND userId = ? AND status = 'completed' LIMIT 1", enrollmentId, userId);
 
-// Unlocked only after the exam is passed (mirrors the client-side isPassed):
-// paid + exam completed (or the enrollment already marked completed).
+// Paid + latest exam + enrollment status in ONE round trip (was up to 3
+// serial SELECTs per document download).
 const hasPassedAccess = async (enrollmentId, userId) => {
-  if (!(await hasPaidAccess(enrollmentId, userId))) return false;
-  const exam = await db.get("SELECT status FROM exams WHERE enrollmentId = ? ORDER BY id DESC LIMIT 1", enrollmentId);
-  if (exam && exam.status === 'completed') return true;
-  const enrollment = await db.get("SELECT status FROM enrollments WHERE id = ? AND userId = ? LIMIT 1", enrollmentId, userId);
-  return !!enrollment && enrollment.status === 'completed';
+  const row = await db.get(`
+    SELECT
+      EXISTS(SELECT 1 FROM payments WHERE enrollmentId = ? AND userId = ? AND status = 'completed') AS paid,
+      (SELECT status FROM exams WHERE enrollmentId = ? ORDER BY id DESC LIMIT 1) AS examStatus,
+      (SELECT status FROM enrollments WHERE id = ? AND userId = ?) AS enrollmentStatus
+  `, enrollmentId, userId, enrollmentId, enrollmentId, userId);
+  if (!row || !row.paid) return false;
+  if (row.examStatus === 'completed') return true;
+  return row.enrollmentStatus === 'completed';
 };
 
 // Shared loader for the exam-gated documents below.
@@ -47,6 +52,9 @@ const loadEnrollment = (enrollmentId, userId) => db.get(`
 
 // ===================== BRANDING =====================
 const LOGO_FILE = path.join(__dirname, '..', 'client', 'public', 'logo', 'logo-full.png');
+// Cropped "IQ" mark from logo-full.png (wordmark erased) for the certificate
+// medallion. Regenerate with a crop script if logo-full.png ever changes.
+const LOGO_IQ_FILE = path.join(__dirname, '..', 'client', 'public', 'logo', 'logo-iq.png');
 // Scanned signature (supervisor / signatory) from client/src/assets/Legeal.
 const SIGN_FILE = path.join(__dirname, '..', 'client', 'src', 'assets', 'Legeal', 'sign.png');
 
@@ -58,6 +66,16 @@ try {
   }
 } catch (e) {
   // logo file missing - drawBrand falls back to a text mark
+}
+
+let IQ_SIZE = null;
+try {
+  const buf = fs.readFileSync(LOGO_IQ_FILE);
+  if (buf.length > 24 && buf.slice(1, 4).toString('ascii') === 'PNG') {
+    IQ_SIZE = { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  }
+} catch (e) {
+  // icon missing - the medallion falls back to the company monogram
 }
 
 let SIGN_SIZE = { width: 1728, height: 863 };
@@ -107,6 +125,8 @@ const GREEN = {
   body: '#374151',
   gray: '#6B7280',
 };
+// Single gold used by the certificate seal, name arrows and ornaments.
+const GOLD = '#D4AF37';
 
 // Document branding comes from admin settings, with fallback defaults.
 // companyName / companyAddress / footText live in lib/documentBrand so the
@@ -118,7 +138,7 @@ const VERIFY_BASE = (process.env.SITE_URL || `http://localhost:${process.env.POR
 // Builds the QR pointing at the public verification page for a document reference
 async function makeQr(ref) {
   try {
-    const base = ((await getSetting(db, 'siteUrl')) || VERIFY_BASE).replace(/\/+$/, '');
+    const base = (siteUrl() || VERIFY_BASE).replace(/\/+$/, '');
     return await QRCode.toBuffer(`${base}/certification?id=${encodeURIComponent(ref)}`, {
       margin: 1, width: 280, color: { dark: '#1C6954', light: '#FFFFFF' },
     });
@@ -129,12 +149,17 @@ async function makeQr(ref) {
 }
 
 // Draws the white QR badge with caption at (x, y); box is the badge size in pt
-function drawQrBadge(doc, qrBuffer, x, y, box = 70) {
+function drawQrBadge(doc, qrBuffer, x, y, box = 70, opts = {}) {
   if (!qrBuffer) return;
   doc.roundedRect(x, y, box, box, 8).fill('#ffffff').stroke(GREEN.stroke);
   doc.image(qrBuffer, x + 6, y + 6, { width: box - 12 });
   doc.font('Helvetica').fontSize(6.5).fillColor(GREEN.gray)
     .text('Scan to verify', x - 10, y + box + 5, { width: box + 20, align: 'center' });
+  // Optional plain-text verify URL for readers who cannot scan.
+  if (opts.url) {
+    doc.fontSize(5.5)
+      .text(opts.url, x + box / 2 - 61, y + box + 14, { width: 122, align: 'center', height: 7, ellipsis: true });
+  }
 }
 
 function drawWatermark(doc, text) {
@@ -143,7 +168,7 @@ function drawWatermark(doc, text) {
   const fs = Math.round(Math.min(w, h) * 0.14);
   doc.save();
   doc.font('Helvetica-Bold').fontSize(fs);
-  doc.fillColor(GREEN.dark).fillOpacity(0.035);
+  doc.fillColor(GREEN.dark).fillOpacity(0.065);
   doc.rotate(-30, { origin: [w / 2, h / 2] });
   doc.text(text, 0, h / 2 - fs * 0.36, { width: w, align: 'center' });
   doc.restore();
@@ -248,6 +273,107 @@ function drawCertificateFrame(doc) {
   });
 }
 
+// Thin ornament columns that fill the empty margins between the frame and
+// the content on both sides of the certificate.
+function drawSideVines(doc) {
+  const w = doc.page.width;
+  const top = 154;
+  const bot = 636;
+  const step = 34;
+  [46, w - 46].forEach((x) => {
+    doc.save();
+    doc.lineWidth(0.8).strokeColor(GREEN.light).strokeOpacity(0.5);
+    doc.moveTo(x, top).lineTo(x, bot).stroke();
+    let k = 0;
+    for (let y = top + step / 2; y <= bot; y += step, k++) {
+      if (k % 2 === 0) {
+        drawDiamond(doc, x, y, 4, GOLD);
+        doc.circle(x, y, 1.4).fill(GREEN.dark);
+      } else {
+        doc.circle(x, y, 2.4).lineWidth(1).strokeColor(GREEN.light).stroke();
+      }
+    }
+    doc.restore();
+  });
+}
+
+// Laurel-wreath emblem: gold halo, tangent leaf branches, monogram medallion
+// and an optional issue-year ribbon. Replaces the old sunburst medal + star.
+function drawLaurelEmblem(doc, opts = {}) {
+  const w = doc.page.width;
+  const cx = w / 2, cy = 240;
+
+  // Soft gold halo rings
+  doc.save();
+  doc.circle(cx, cy, 41).fill(GOLD).fillOpacity(0.10);
+  doc.circle(cx, cy, 41).lineWidth(1).strokeColor(GOLD).strokeOpacity(0.55).stroke();
+  doc.circle(cx, cy, 36).lineWidth(0.7).strokeColor(GOLD).strokeOpacity(0.35).stroke();
+  doc.restore();
+
+  // Leaves tangent to a 31pt circle — open at the top, joined at the bottom
+  const leafAt = (deg, i) => {
+    const rad = (deg * Math.PI) / 180;
+    const lx = cx + 31 * Math.cos(rad);
+    const ly = cy + 31 * Math.sin(rad);
+    doc.save();
+    doc.rotate(deg + 90, { origin: [lx, ly] });
+    doc.ellipse(lx, ly, 8, 3.4).fill(i % 2 ? '#A9821B' : GOLD);
+    doc.restore();
+  };
+  for (let i = 0; i < 7; i++) leafAt(105 + i * 25, i); // left branch
+  for (let i = 0; i < 7; i++) leafAt(75 - i * 25, i);  // right branch
+  leafAt(90, 1);                                       // bottom leaf
+
+  // Gold flourishes filling the band beside the emblem
+  doc.save();
+  doc.lineWidth(1).strokeColor(GOLD).strokeOpacity(0.75);
+  doc.moveTo(cx - 222, cy).lineTo(cx - 66, cy).stroke();
+  doc.moveTo(cx + 66, cy).lineTo(cx + 222, cy).stroke();
+  doc.restore();
+  drawDiamond(doc, cx - 222, cy, 4.5, GOLD);
+  drawDiamond(doc, cx + 222, cy, 4.5, GOLD);
+  drawDiamond(doc, cx - 66, cy, 3.5, '#A9821B');
+  drawDiamond(doc, cx + 66, cy, 3.5, '#A9821B');
+  doc.circle(cx - 150, cy, 2.2).fill(GOLD);
+  doc.circle(cx + 150, cy, 2.2).fill(GOLD);
+
+  // White medallion with the cropped IQ logo mark (monogram fallback)
+  doc.circle(cx, cy, 24).fill('#ffffff');
+  doc.circle(cx, cy, 24).lineWidth(2).strokeColor(GOLD).stroke();
+  doc.circle(cx, cy, 20).lineWidth(0.8).strokeColor(GREEN.light).stroke();
+  let iconDrawn = false;
+  if (IQ_SIZE) {
+    try {
+      const ih = 28;
+      const iw = ih * (IQ_SIZE.width / IQ_SIZE.height);
+      doc.image(LOGO_IQ_FILE, cx - iw / 2, cy - ih / 2, { height: ih });
+      iconDrawn = true;
+    } catch (e) {
+      // unreadable icon - fall through to the monogram
+    }
+  }
+  if (!iconDrawn) {
+    const mono = (companyName() || '').trim().charAt(0).toUpperCase();
+    if (mono) {
+      doc.font('Times-Bold').fontSize(22).fillColor('#8A6A1F')
+        .text(mono, cx - 20, cy - 9, { width: 40, align: 'center' });
+    }
+  }
+
+  // Ribbon banner carrying the issue year (real data only)
+  if (opts.year) {
+    const by = cy + 44;
+    doc.save();
+    doc.fillColor('#A9821B');
+    doc.polygon([cx - 72, by], [cx - 50, by], [cx - 50, by + 20], [cx - 72, by + 20], [cx - 64, by + 10]).fill();
+    doc.polygon([cx + 72, by], [cx + 50, by], [cx + 50, by + 20], [cx + 72, by + 20], [cx + 64, by + 10]).fill();
+    doc.restore();
+    doc.roundedRect(cx - 56, by, 112, 20, 3).fill(GOLD).lineWidth(0.8).stroke('#9A7B12');
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#3E3000')
+      .text(String(opts.year), cx - 56, by + 5.5, { width: 112, align: 'center' });
+  }
+}
+
 function drawBrand(doc, x, y) {
   const logoH = 80;
   const logoY = y - 36;
@@ -276,15 +402,18 @@ function drawTitle(doc, title, y, opts = {}) {
   doc.rect(rx, y + size + 10, tw, 3).fill(g);
 }
 
-function drawFooter(doc) {
+function drawFooter(doc, y) {
   const w = doc.page.width;
   const h = doc.page.height;
+  // Default keeps the historical position; pass y to anchor it explicitly
+  // (the certificate footer sits just above its frame).
+  const fy = y != null ? y : h - 132;
   const g = doc.linearGradient(50, 0, w - 50, 0);
   g.stop(0, GREEN.mint).stop(1, GREEN.wave);
-  doc.rect(50, h - 132, w - 100, 1.2).fill(g);
+  doc.rect(50, fy, w - 100, 1.2).fill(g);
   doc.font('Helvetica').fontSize(7).fillColor(GREEN.gray)
-    .text(footText(), 50, h - 126, { width: w - 100, align: 'center' });
-  drawDisclaimer(doc, h - 117, { size: 6.5 });
+    .text(footText(), 50, fy + 6, { width: w - 100, align: 'center' });
+  drawDisclaimer(doc, fy + 15, { size: 6.5 });
 }
 
 function sectionBar(doc, label, y) {
@@ -344,7 +473,7 @@ router.get('/download/receipt/:paymentId', authenticateToken, async (req, res) =
 
   y = sectionBar(doc, 'PAYMENT DETAILS', y + 14);
   y = infoRow(doc, 'Program', payment.internshipTitle, y);
-  y = infoRow(doc, 'Amount', `\u20B9${Number(payment.amount).toLocaleString('en-IN')}`, y);
+  y = infoRow(doc, 'Amount', `Rs. ${Number(payment.amount).toLocaleString('en-IN')}`, y);
   y = infoRow(doc, 'Method', payment.method === 'razorpay' ? 'Razorpay (Online)' : 'Wallet', y);
   y = infoRow(doc, 'Transaction ID', payment.transactionId, y);
   y = infoRow(doc, 'Status', 'COMPLETED', y);
@@ -355,7 +484,7 @@ router.get('/download/receipt/:paymentId', authenticateToken, async (req, res) =
   boxG.stop(0, GREEN.dark).stop(1, GREEN.mid);
   doc.roundedRect(50, y, 220, 56, 8).fill(boxG);
   doc.font('Helvetica').fontSize(9).fillColor(GREEN.mint).text('TOTAL PAID', 50, y + 10, { width: 220, align: 'center' });
-  doc.font('Helvetica-Bold').fontSize(24).fillColor('#fff').text(`\u20B9${Number(payment.amount).toLocaleString('en-IN')}`, 50, y + 26, { width: 220, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(24).fillColor('#fff')    .text(`Rs. ${Number(payment.amount).toLocaleString('en-IN')}`, 50, y + 26, { width: 220, align: 'center' });
 
   const stampX = 330, stampY = y + 2;
   doc.save();
@@ -485,17 +614,31 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
   const doc = startPdf(res, `certificate-${cert.certificateId}.pdf`, { watermark: 'CERTIFIED' });
   const w = doc.page.width;
   const h = doc.page.height;
-  const duration = cert.duration || 30;
-  const score = cert.score != null ? cert.score : 0;
-  const grade = cert.grade || 'N/A';
+  // Real data only — a credential must never show invented values.
+  const duration = cert.duration || null;
+  const score = cert.score != null ? `${cert.score}%` : null;
+  const grade = cert.grade || null;
 
-  // Decorative double frame with edge ornaments
+  // Decorative double frame with edge ornaments + side vines
   drawCertificateFrame(doc);
+  drawSideVines(doc);
 
   // Gradient letterhead band behind logo + company details
   const bandG = doc.linearGradient(44, 0, w - 44, 0);
   bandG.stop(0, GREEN.pale).stop(1, '#ffffff');
   doc.roundedRect(44, 30, w - 88, 110, 14).fill(bandG).stroke(GREEN.stroke);
+  const bandLine = doc.linearGradient(60, 0, w - 60, 0);
+  bandLine.stop(0, GOLD).stop(1, GREEN.wave);
+  doc.rect(60, 136.5, w - 120, 2.5).fill(bandLine);
+
+  // Certificate ID chip balances the QR badge on the other side of the band
+  const chipW = 126;
+  doc.lineWidth(0.8);
+  doc.roundedRect(56, 54, chipW, 30, 6).fill('#FDF8EA').stroke(GOLD);
+  doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#9A7B12')
+    .text('CERTIFICATE ID', 63, 59, { width: chipW - 14 });
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(GREEN.dark)
+    .text(cert.certificateId, 63, 68, { width: chipW - 14, height: 12, ellipsis: true });
 
   // Centered letterhead: website logo, company name and address
   const certLogoH = 80;
@@ -504,10 +647,13 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
   doc.font('Helvetica-Bold').fontSize(9).fillColor(GREEN.mid)
     .text(footText(), 0, 122, { width: w, align: 'center' });
 
-  // QR verification badge (top-right of the letterhead band)
-  drawQrBadge(doc, qrBuffer, 470, 40, 70);
+  // QR badge + plain-text verify URL. Raised to y32 so the captions clear
+  // the centered footText line below (they used to overlap).
+  const siteBase = (siteUrl() || VERIFY_BASE).replace(/\/+$/, '');
+  drawQrBadge(doc, qrBuffer, 456, 32, 62, { url: `${siteBase}/certification` });
 
-  doc.font('Helvetica-Bold').fontSize(28).fillColor(GREEN.dark)
+  // Serif title for a traditional certificate feel
+  doc.font('Times-Bold').fontSize(28).fillColor(GREEN.dark)
     .text('CERTIFICATE OF COMPLETION', 0, 152, { width: w, align: 'center' });
   const ruleW = 250;
   const rg = doc.linearGradient((w - ruleW) / 2, 0, (w + ruleW) / 2, 0);
@@ -519,29 +665,13 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
   doc.circle((w - ruleW) / 2, 193.5, 3.5).fill(GREEN.dark);
   doc.circle((w + ruleW) / 2, 193.5, 3.5).fill(GREEN.dark);
 
-  // Sunburst gold seal with ribbons
-  const cx = w / 2, cy = 246;
-  doc.save();
-  doc.fillColor('#F59E0B').fillOpacity(0.3);
-  for (let i = 0; i < 16; i++) {
-    doc.save();
-    doc.rotate(i * 22.5, { origin: [cx, cy] });
-    doc.polygon([cx, cy], [cx - 5, cy - 40], [cx + 5, cy - 40]).fill();
-    doc.restore();
-  }
-  doc.restore();
-  doc.save();
-  doc.fillColor(GREEN.dark);
-  doc.polygon([cx - 18, cy + 6], [cx - 6, cy + 6], [cx - 6, cy + 48], [cx - 12, cy + 38], [cx - 18, cy + 48]).fill();
-  doc.polygon([cx + 6, cy + 6], [cx + 18, cy + 6], [cx + 18, cy + 48], [cx + 12, cy + 38], [cx + 6, cy + 48]).fill();
-  doc.restore();
-  doc.circle(cx, cy, 24).fill('#FBBF24');
-  doc.circle(cx, cy, 24).lineWidth(2).strokeColor('#B45309').stroke();
-  doc.circle(cx, cy, 18).lineWidth(1.2).strokeColor('#FFF7E6').stroke();
-  doc.font('Helvetica-Bold').fontSize(15).fillColor('#92400E').text('\u2605', cx - 8, cy - 9);
+  // Laurel-wreath emblem with issue-year ribbon (replaces the sunburst medal)
+  drawLaurelEmblem(doc, {
+    year: cert.issuedAt ? String(new Date(cert.issuedAt).getFullYear()) : null,
+  });
 
   // Body
-  doc.font('Helvetica-Oblique').fontSize(11).fillColor(GREEN.gray).text('This is to certify that', 0, 308, { width: w, align: 'center' });
+  doc.font('Times-Italic').fontSize(12).fillColor(GREEN.gray).text('This is to certify that', 0, 308, { width: w, align: 'center' });
   // Flanking flourishes beside the intro line
   const fy = 314.5;
   doc.save();
@@ -552,64 +682,104 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
   drawDiamond(doc, 222, fy, 4, GREEN.light);
   drawDiamond(doc, w - 222, fy, 4, GREEN.light);
 
+  // Name: shrink to a single line (pdfkit's widthOfString ignores {font,size}
+  // options, so set the font first), then anchor the underline to the real
+  // text bottom (doc.y) — long names can never be struck through or collide
+  // with the line below.
   const nameStr = `${cert.firstName} ${cert.lastName}`;
-  doc.font('Helvetica-Bold').fontSize(30).fillColor(GREEN.dark).text(nameStr, 0, 328, { width: w, align: 'center' });
-  const nameW = doc.widthOfString(nameStr, { font: 'Helvetica-Bold', size: 30 });
+  doc.font('Times-Bold');
+  let nameSize = 32;
+  doc.fontSize(nameSize);
+  while (nameSize > 18 && doc.widthOfString(nameStr) > w - 160) {
+    nameSize -= 1;
+    doc.fontSize(nameSize);
+  }
+  doc.fillColor(GREEN.dark).text(nameStr, 0, 328, { width: w, align: 'center' });
+  const nameBottom = doc.y;
+  const nameW = Math.min(doc.widthOfString(nameStr), w - 160);
   const nameX = (w - nameW) / 2;
-  const nameBottom = 328 + 30 * 1.15;
-  doc.rect(nameX, nameBottom + 4, nameW, 2).fill(GREEN.mid);
-  doc.polygon([nameX - 14, nameBottom + 5], [nameX - 5, nameBottom], [nameX + 4, nameBottom + 5], [nameX - 5, nameBottom + 10]).fill('#D4AF37');
-  doc.polygon([nameX + nameW + 14, nameBottom + 5], [nameX + nameW + 5, nameBottom], [nameX + nameW - 4, nameBottom + 5], [nameX + nameW + 5, nameBottom + 10]).fill('#D4AF37');
+  doc.rect(nameX, nameBottom, nameW, 2).fill(GREEN.mid);
+  doc.polygon([nameX - 14, nameBottom + 1], [nameX - 5, nameBottom - 4], [nameX + 4, nameBottom + 1], [nameX - 5, nameBottom + 6]).fill(GOLD);
+  doc.polygon([nameX + nameW + 14, nameBottom + 1], [nameX + nameW + 5, nameBottom - 4], [nameX + nameW - 4, nameBottom + 1], [nameX + nameW + 5, nameBottom + 6]).fill(GOLD);
 
   doc.font('Helvetica').fontSize(11).fillColor(GREEN.ink).text('has successfully completed the internship program', 0, nameBottom + 24, { width: w, align: 'center' });
 
-  // Program title in a highlight pill
+  // Program title: always a single line inside its pill — shrink to fit,
+  // then ellipsize, so it can never wrap into the details row below.
   const progText = `"${cert.internshipTitle}"`;
-  doc.font('Helvetica-Bold').fontSize(17);
-  const progW = doc.widthOfString(progText);
-  const progY = nameBottom + 50;
-  if (progW + 48 <= w - 120) {
-    doc.roundedRect((w - progW) / 2 - 24, progY - 7, progW + 48, 34, 17).fill(GREEN.pale).stroke(GREEN.stroke);
+  doc.font('Helvetica-Bold');
+  let progSize = 17;
+  doc.fontSize(progSize);
+  const progMax = 400;
+  while (progSize > 12 && doc.widthOfString(progText) > progMax) {
+    progSize -= 1;
+    doc.fontSize(progSize);
   }
-  doc.fillColor(GREEN.mid).text(progText, 0, progY, { width: w, align: 'center' });
+  let progDraw = progText;
+  if (doc.widthOfString(progDraw) > progMax) {
+    const quoteW = doc.widthOfString('""');
+    let t = cert.internshipTitle;
+    while (t.length > 4 && doc.widthOfString(`${t}…`) > progMax - quoteW) t = t.slice(0, -1);
+    progDraw = `"${t.trimEnd()}…"`;
+  }
+  const progW = doc.widthOfString(progDraw);
+  const progY = nameBottom + 50;
+  doc.roundedRect((w - progW) / 2 - 24, progY - 7, progW + 48, 34, 17).fill(GREEN.pale).stroke(GREEN.stroke);
+  doc.fillColor(GREEN.mid).text(progDraw, 0, progY, { width: w, align: 'center' });
 
-  // Details row
+  // Details row — real values only; margins match the strip/card below (x60)
   const detailY = nameBottom + 84;
-  const colW = (w - 180) / 3;
-  const labels = ['DURATION', 'GRADE', 'SCORE'];
-  const values = [`${duration} Days`, grade, `${score}%`];
-  [70, 70 + colW + 25, 70 + (colW + 25) * 2].forEach((x, i) => {
-    doc.roundedRect(x, detailY, colW, 38, 6).fill('#ffffff').stroke(GREEN.stroke);
-    doc.rect(x, detailY + 5, 4, 28).fill(GREEN.mid);
-    doc.font('Helvetica').fontSize(8).fillColor(GREEN.gray).text(labels[i], x, detailY + 8, { width: colW, align: 'center' });
-    doc.font('Helvetica-Bold').fontSize(15).fillColor(GREEN.dark).text(values[i], x, detailY + 21, { width: colW, align: 'center' });
-  });
+  const stats = [
+    duration ? ['DURATION', `${duration} Days`] : null,
+    grade ? ['GRADE', grade] : null,
+    score ? ['SCORE', score] : null,
+  ].filter(Boolean);
+  if (stats.length) {
+    const gap = 30;
+    const colW = (w - 120 - gap * (stats.length - 1)) / stats.length;
+    stats.forEach(([label, value], i) => {
+      const x = 60 + i * (colW + gap);
+      doc.roundedRect(x, detailY, colW, 38, 6).fill('#ffffff').stroke(GREEN.stroke);
+      doc.rect(x, detailY + 5, 4, 28).fill(GREEN.mid);
+      doc.font('Helvetica').fontSize(8).fillColor(GREEN.gray).text(label, x, detailY + 8, { width: colW, align: 'center' });
+      doc.font('Helvetica-Bold').fontSize(15).fillColor(GREEN.dark).text(value, x, detailY + 21, { width: colW, align: 'center' });
+    });
+  }
 
-  // College + student + certificate ID strip
-  doc.roundedRect(60, detailY + 46, w - 120, 44, 8).fill(GREEN.pale).stroke(GREEN.stroke);
+  // Credential strip — single lines truncated (never wrapped) so rows cannot
+  // collide; white like every other container instead of a special pale fill.
+  doc.roundedRect(60, detailY + 46, w - 120, 44, 8).fill('#ffffff').stroke(GREEN.stroke);
   doc.rect(60, detailY + 52, 5, 32).fill(GREEN.mid);
-  doc.font('Helvetica').fontSize(10).fillColor(GREEN.body).text(`College: ${cert.college || 'N/A'}  ·  Course: ${String(cert.course || 'N/A').toUpperCase()}`, 0, detailY + 56, { width: w, align: 'center' });
+  doc.font('Helvetica').fontSize(10).fillColor(GREEN.body)
+    .text(`College: ${cert.college || '—'}  ·  Course: ${String(cert.course || '—').toUpperCase()}`, 0, detailY + 56, { width: w, height: 13, ellipsis: true, align: 'center' });
   doc.fontSize(8.5).fillColor(GREEN.gray)
-    .text(`Email: ${cert.email || 'N/A'}  ·  Certificate ID: ${cert.certificateId}  ·  Issued: ${cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : 'N/A'}`, 0, detailY + 72, { width: w, align: 'center' });
+    .text(`Email: ${cert.email || '—'}  ·  Issued: ${cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'}`, 0, detailY + 72, { width: w, height: 12, ellipsis: true, align: 'center' });
 
-  // Internship & student details card
+  // Internship & student details card — rows trimmed to non-duplicated data
+  // (Program lives in the pill, Duration in the stat box above, the ID in the
+  // chip top-left). The internship description adds a 4th "About" row when
+  // the catalog provides one.
   const insY = detailY + 100;
-  doc.roundedRect(60, insY, w - 120, 80, 8).fill('#ffffff').stroke(GREEN.stroke);
+  const enrolledOn = cert.enrolledAt
+    ? `  ·  Enrolled: ${new Date(cert.enrolledAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
+    : '';
+  // Course already appears in the strip above — keep this line short enough
+  // to fit the 355pt value column instead of being ellipsized.
+  const studentLine = `Roll No: ${cert.rollNo || '—'}  ·  Session: ${cert.year || '—'}${cert.regNo ? `  ·  Reg No: ${cert.regNo}` : ''}`;
+  const enrollmentLine = `Modules: ${cert.modules ?? '—'}${enrolledOn}${duration ? `  ·  Duration: ${duration} Days` : ''}`;
+  const insRows = [
+    ['Student', studentLine],
+    ['University', String(cert.university || cert.college || '—')],
+    ['Enrollment', enrollmentLine],
+  ];
+  if (cert.description) insRows.push(['About', cert.description]);
+  const insH = 26 + 13 * insRows.length;
+  doc.roundedRect(60, insY, w - 120, insH, 8).fill('#ffffff').stroke(GREEN.stroke);
   const insG = doc.linearGradient(60, 0, w - 60, 0);
   insG.stop(0, GREEN.dark).stop(1, GREEN.light);
   doc.roundedRect(60, insY, w - 120, 18, 8).fill(insG);
   doc.rect(60, insY + 9, w - 120, 9).fill(insG);
   doc.font('Helvetica-Bold').fontSize(9).fillColor('#fff').text('INTERNSHIP & STUDENT DETAILS', 74, insY + 4.5);
-  const enrolledOn = cert.enrolledAt
-    ? `  ·  Enrolled: ${new Date(cert.enrolledAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
-    : '';
-  const studentLine = `Course: ${String(cert.course || 'N/A').toUpperCase()}  ·  Roll No: ${cert.rollNo || 'N/A'}  ·  Session: ${cert.year || 'N/A'}${cert.regNo ? `  ·  Reg No: ${cert.regNo}` : ''}`;
-  const insRows = [
-    ['Program', String(cert.internshipTitle || 'N/A')],
-    ['Duration', `${duration} Days  ·  Modules: ${cert.modules ?? 'N/A'}${enrolledOn}`],
-    ['Student', studentLine],
-    ['University', String(cert.university || cert.college || 'N/A')],
-  ];
   insRows.forEach(([label, value], i) => {
     const ry = insY + 24 + i * 13;
     doc.font('Helvetica-Bold').fontSize(9).fillColor(GREEN.dark).text(label, 74, ry, { width: 90 });
@@ -621,17 +791,29 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
   const sigY = h - 180;
   doc.lineWidth(1).strokeColor(GREEN.light);
   doc.moveTo(w - 240, sigY).lineTo(w - 80, sigY).stroke();
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(GREEN.dark);
+  doc.font('Times-Bold').fontSize(12).fillColor(GREEN.dark);
   doc.text(directorName(), w - 240, sigY + 6, { width: 160, align: 'center' });
   doc.font('Helvetica').fontSize(9).fillColor(GREEN.gray);
   doc.text(`CEO, ${companyName()}`, w - 240, sigY + 20, { width: 160, align: 'center' });
   doc.font('Helvetica').fontSize(7).fillColor(GREEN.mid);
   doc.text(companyAddress(), w - 240, sigY + 32, { width: 160, align: 'center' });
 
-  // Company stamp (left signature zone)
+  // Company stamp with label (left signature zone mirrors the right side)
   drawStamp(doc, 133, sigY - 30, 54);
+  doc.font('Helvetica-Bold').fontSize(7).fillColor(GREEN.gray)
+    .text('COMPANY STAMP & SEAL', 80, sigY + 32, { width: 160, align: 'center' });
 
-  drawFooter(doc);
+  // White footer sitting on the dark green wave band — fills the bottom of
+  // the page instead of leaving an empty strip above the frame. The default
+  // 50pt bottom margin would push text below y791.89 onto a second page, so
+  // it is lifted for the duration of the footer block.
+  doc.save();
+  doc.page.margins.bottom = 0;
+  doc.font('Helvetica-Bold').fontSize(7).fillColor('#ffffff').fillOpacity(0.95)
+    .text(footText(), 100, 790, { width: w - 200, align: 'center', height: 12, ellipsis: true });
+  drawDisclaimer(doc, 798.5, { size: 6, color: '#ffffff', width: w - 160, x: 80 });
+  doc.page.margins.bottom = 50;
+  doc.restore();
   doc.end();
 });
 
@@ -652,23 +834,25 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
     return res.status(403).json({ error: 'Complete payment to download the internship report.' });
   }
 
-  const cert = await db.get('SELECT * FROM certificates WHERE enrollmentId = ?', enrollment.id);
-  const exam = await db.get('SELECT * FROM exams WHERE enrollmentId = ? ORDER BY id DESC', enrollment.id);
-  const avgRow = await db.get('SELECT AVG(score) as avgScore FROM exams WHERE internshipId = ? AND status = ?', enrollment.internshipId, 'completed');
+  const [cert, exam, avgRow, moduleRows, internship, reportNo] = await Promise.all([
+    db.get('SELECT * FROM certificates WHERE enrollmentId = ?', enrollment.id),
+    db.get('SELECT * FROM exams WHERE enrollmentId = ? ORDER BY id DESC', enrollment.id),
+    db.get('SELECT AVG(score) as avgScore FROM exams WHERE internshipId = ? AND status = ?', enrollment.internshipId, 'completed'),
+    db.all('SELECT title, durationMinutes, moduleOrder FROM learning_modules WHERE internshipId = ? ORDER BY moduleOrder', enrollment.internshipId),
+    db.get('SELECT * FROM internships WHERE id = ?', enrollment.internshipId),
+    ensureEnrollmentNumber(db, enrollment, 'reportNo'),
+  ]);
+  const siteLabel = siteUrl() || VERIFY_BASE;
 
   let completedIdx = [];
   try { completedIdx = JSON.parse(enrollment.completedModules || '[]'); } catch (e) { completedIdx = []; }
-  const moduleRows = await db.all('SELECT title, durationMinutes, moduleOrder FROM learning_modules WHERE internshipId = ? ORDER BY moduleOrder', enrollment.internshipId);
   const modules = moduleRows.map((m, i) => ({
     title: m.title,
     duration: m.durationMinutes ? `${Math.round(m.durationMinutes / 60 * 10) / 10} hrs` : '—',
     done: completedIdx.includes(m.moduleOrder != null ? m.moduleOrder : i) || completedIdx.includes(i),
   }));
 
-  const internship = await db.get('SELECT * FROM internships WHERE id = ?', enrollment.internshipId);
   const content = getReportContent(internship.category, internship);
-
-  const reportNo = await ensureEnrollmentNumber(db, enrollment, 'reportNo');
   const qrBuffer = await makeQr(reportNo);
   const duration = enrollment.duration || 30;
   const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : 'N/A';
@@ -678,7 +862,7 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
     programTitle: enrollment.internshipTitle,
     companyName: companyName(),
     companyAddress: companyAddress(),
-    siteLabel: (await getSetting(db, 'siteUrl')) || VERIFY_BASE,
+    siteLabel: siteLabel || VERIFY_BASE,
     dateLabel: `Issued: ${fmt(new Date())}`,
     reportNo,
     studentName: `${enrollment.firstName} ${enrollment.lastName}`,
@@ -734,7 +918,7 @@ router.get('/download/attendance/:enrollmentId', authenticateToken, async (req, 
 
   // Date range: forward = from registration onwards; backward = ends on the
   // download date and starts `duration` days earlier
-  const dateMode = (await getSetting(db, 'attendanceDateMode')) === 'backward' ? 'backward' : 'forward';
+  const dateMode = attendanceDateMode();
   const rowCount = Math.min(duration, 31);
   const today = new Date();
   const dateFor = (i) => {
@@ -975,7 +1159,7 @@ router.get('/download/log-book/:enrollmentId', authenticateToken, async (req, re
   const duration = enrollment.duration || 30;
   const fmt = (x) => x.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
   const enrolled = new Date(enrollment.enrolledAt);
-  const dateMode = (await getSetting(db, 'attendanceDateMode')) === 'backward' ? 'backward' : 'forward';
+  const dateMode = attendanceDateMode();
   const start = dateMode === 'backward' ? new Date(Date.now() - (duration - 1) * 86400000) : enrolled;
 
   streamLogBook(res, {

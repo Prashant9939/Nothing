@@ -18,36 +18,86 @@ const adminOnly = async (req, res, next) => {
   next();
 };
 
+// List endpoints cap their rows so responses stay bounded as tables grow
+// (they used to ship every row — multi-MB payloads and full sorts as data
+// accumulated). ?limit= overrides, clamped to 1..5000.
+const listLimit = (req, def = 1000) => {
+  const n = Number(req.query.limit);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 5000) : def;
+};
+
 // ===================== DASHBOARD STATS =====================
-router.get('/dashboard', authenticateToken, adminOnly, async (req, res) => {
-  const stats = {
-    totalStudents: (await db.get("SELECT COUNT(*) as count FROM users WHERE role = 'student'")).count,
-    totalInternships: (await db.get('SELECT COUNT(*) as count FROM internships')).count,
-    totalEnrollments: (await db.get('SELECT COUNT(*) as count FROM enrollments')).count,
-    totalRevenue: (await db.get("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed'")).total,
-    pendingPayments: (await db.get("SELECT COUNT(*) as count FROM payments WHERE status = 'pending'")).count,
-    completedExams: (await db.get("SELECT COUNT(*) as count FROM exams WHERE status = 'completed'")).count,
-    certificatesIssued: (await db.get('SELECT COUNT(*) as count FROM certificates')).count,
-    activeStudents: (await db.get("SELECT COUNT(*) as count FROM enrollments WHERE status = 'active'")).count,
+// 10 queries per hit; admin pages re-fetch on every navigation. Cache the
+// result for 30s (single-instance deployment) and share one in-flight
+// computation across concurrent requests.
+let dashboardCache = null;
+let dashboardCacheAt = 0;
+let dashboardInflight = null;
+const DASHBOARD_TTL_MS = 30000;
+
+const computeDashboard = async () => {
+  const [students, internships, enrollments, revenue, pending, exams, certs, active, recentEnrollments, recentPayments] = await Promise.all([
+    db.get("SELECT COUNT(*) as count FROM users WHERE role = 'student'"),
+    db.get('SELECT COUNT(*) as count FROM internships'),
+    db.get('SELECT COUNT(*) as count FROM enrollments'),
+    db.get("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed'"),
+    db.get("SELECT COUNT(*) as count FROM payments WHERE status = 'pending'"),
+    db.get("SELECT COUNT(*) as count FROM exams WHERE status = 'completed'"),
+    db.get('SELECT COUNT(*) as count FROM certificates'),
+    db.get("SELECT COUNT(*) as count FROM enrollments WHERE status = 'active'"),
+    db.all(`
+      SELECT e.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
+      FROM enrollments e
+      JOIN users u ON e.userId = u.id
+      JOIN internships i ON e.internshipId = i.id
+      ORDER BY e.enrolledAt DESC LIMIT 10
+    `),
+    db.all(`
+      SELECT p.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
+      FROM payments p
+      JOIN users u ON p.userId = u.id
+      JOIN internships i ON i.id = p.internshipId
+      ORDER BY p.createdAt DESC LIMIT 10
+    `),
+  ]);
+
+  return {
+    stats: {
+      totalStudents: students.count,
+      totalInternships: internships.count,
+      totalEnrollments: enrollments.count,
+      totalRevenue: revenue.total,
+      pendingPayments: pending.count,
+      completedExams: exams.count,
+      certificatesIssued: certs.count,
+      activeStudents: active.count,
+    },
+    recentEnrollments,
+    recentPayments,
   };
+};
 
-  const recentEnrollments = await db.all(`
-    SELECT e.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
-    FROM enrollments e
-    JOIN users u ON e.userId = u.id
-    JOIN internships i ON e.internshipId = i.id
-    ORDER BY e.enrolledAt DESC LIMIT 10
-  `);
-
-  const recentPayments = await db.all(`
-    SELECT p.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
-    FROM payments p
-    JOIN users u ON p.userId = u.id
-    JOIN internships i ON i.id = p.internshipId
-    ORDER BY p.createdAt DESC LIMIT 10
-  `);
-
-  res.json({ stats, recentEnrollments, recentPayments });
+router.get('/dashboard', authenticateToken, adminOnly, async (req, res) => {
+  const now = Date.now();
+  if (dashboardCache && now - dashboardCacheAt < DASHBOARD_TTL_MS) {
+    return res.json(dashboardCache);
+  }
+  try {
+    if (!dashboardInflight) {
+      dashboardInflight = computeDashboard()
+        .then((payload) => {
+          dashboardCache = payload;
+          dashboardCacheAt = Date.now();
+          return payload;
+        })
+        .finally(() => {
+          dashboardInflight = null;
+        });
+    }
+    res.json(await dashboardInflight);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Failed to load dashboard' });
+  }
 });
 
 // ===================== SITE ANALYTICS =====================
@@ -80,16 +130,6 @@ router.get('/analytics', authenticateToken, adminOnly, async (req, res) => {
   const bucketExpr = hourly
     ? "to_char(NULLIF(createdAt, '')::timestamp, 'YYYY-MM-DD HH24:00')"
     : "to_char(NULLIF(createdAt, '')::timestamp, 'YYYY-MM-DD')";
-  const eventRows = await db.all(`
-    SELECT ${bucketExpr} AS bucket,
-           COUNT(DISTINCT visitorId) AS visitors,
-           COALESCE(SUM(CASE WHEN type = 'click' THEN 1 ELSE 0 END), 0) AS clicks,
-           COALESCE(SUM(CASE WHEN type = 'pageview' THEN 1 ELSE 0 END), 0) AS pageviews,
-           COALESCE(SUM(CASE WHEN type = 'visit' THEN 1 ELSE 0 END), 0) AS visits
-    FROM analytics_events
-    WHERE createdAt >= ?
-    GROUP BY bucket
-  `, startStamp);
 
   // Window totals — current period and the equally-long previous period (deltas)
   const eventTotals = async (from, to) => await db.get(`
@@ -101,40 +141,57 @@ router.get('/analytics', authenticateToken, adminOnly, async (req, res) => {
     WHERE createdAt >= ?${to ? ' AND createdAt < ?' : ''}
   `, ...(to ? [from, to] : [from])) || {};
 
-  const summary = { ...(await eventTotals(startStamp)) };
-  const previous = { ...(await eventTotals(prevStartStamp, startStamp)) };
-  summary.avgClicks = summary.visitors ? Math.round((summary.clicks / summary.visitors) * 10) / 10 : 0;
-  previous.avgClicks = previous.visitors ? Math.round((previous.clicks / previous.visitors) * 10) / 10 : 0;
-
   // Business metrics for the same windows
   const bizTotals = async (from, to) => await db.get(`
     SELECT (SELECT COUNT(*) FROM users WHERE createdAt >= ?${to ? ' AND createdAt < ?' : ''}) AS signups,
            (SELECT COUNT(*) FROM payments WHERE status = 'completed' AND paidAt >= ?${to ? ' AND paidAt < ?' : ''}) AS enrollments,
            (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'completed' AND paidAt >= ?${to ? ' AND paidAt < ?' : ''}) AS revenue
   `, ...(to ? [from, to, from, to, from, to] : [from, from, from])) || {};
-  Object.assign(summary, await bizTotals(startStamp));
-  Object.assign(previous, await bizTotals(prevStartStamp, startStamp));
 
-  const signupRows = await db.all(`
-    SELECT ${bucketExpr} AS bucket, COUNT(*) AS signups
-    FROM users WHERE createdAt >= ? GROUP BY bucket
-  `, startStamp);
-  const revenueRows = await db.all(`
-    SELECT ${hourly ? "to_char(NULLIF(paidAt, '')::timestamp, 'YYYY-MM-DD HH24:00')" : "to_char(NULLIF(paidAt, '')::timestamp, 'YYYY-MM-DD')"} AS bucket,
-           COUNT(*) AS enrollments, COALESCE(SUM(amount), 0) AS revenue
-    FROM payments WHERE status = 'completed' AND paidAt >= ? GROUP BY bucket
-  `, startStamp);
+  // Every window/bucket query is independent — run them together instead of
+  // paying one remote round trip after another.
+  const [eventRows, evSummary, evPrevious, bizSummary, bizPrevious, signupRows, revenueRows, topPages] = await Promise.all([
+    db.all(`
+      SELECT ${bucketExpr} AS bucket,
+             COUNT(DISTINCT visitorId) AS visitors,
+             COALESCE(SUM(CASE WHEN type = 'click' THEN 1 ELSE 0 END), 0) AS clicks,
+             COALESCE(SUM(CASE WHEN type = 'pageview' THEN 1 ELSE 0 END), 0) AS pageviews,
+             COALESCE(SUM(CASE WHEN type = 'visit' THEN 1 ELSE 0 END), 0) AS visits
+      FROM analytics_events
+      WHERE createdAt >= ?
+      GROUP BY bucket
+    `, startStamp),
+    eventTotals(startStamp),
+    eventTotals(prevStartStamp, startStamp),
+    bizTotals(startStamp),
+    bizTotals(prevStartStamp, startStamp),
+    db.all(`
+      SELECT ${bucketExpr} AS bucket, COUNT(*) AS signups
+      FROM users WHERE createdAt >= ? GROUP BY bucket
+    `, startStamp),
+    db.all(`
+      SELECT ${hourly ? "to_char(NULLIF(paidAt, '')::timestamp, 'YYYY-MM-DD HH24:00')" : "to_char(NULLIF(paidAt, '')::timestamp, 'YYYY-MM-DD')"} AS bucket,
+             COUNT(*) AS enrollments, COALESCE(SUM(amount), 0) AS revenue
+      FROM payments WHERE status = 'completed' AND paidAt >= ? GROUP BY bucket
+    `, startStamp),
+    db.all(`
+      SELECT path,
+             COALESCE(SUM(CASE WHEN type = 'pageview' THEN 1 ELSE 0 END), 0) AS views,
+             COALESCE(SUM(CASE WHEN type = 'click' THEN 1 ELSE 0 END), 0) AS clicks
+      FROM analytics_events
+      WHERE createdAt >= ? AND path IS NOT NULL
+      GROUP BY path
+      ORDER BY views DESC, clicks DESC
+      LIMIT 8
+    `, startStamp),
+  ]);
 
-  const topPages = await db.all(`
-    SELECT path,
-           COALESCE(SUM(CASE WHEN type = 'pageview' THEN 1 ELSE 0 END), 0) AS views,
-           COALESCE(SUM(CASE WHEN type = 'click' THEN 1 ELSE 0 END), 0) AS clicks
-    FROM analytics_events
-    WHERE createdAt >= ? AND path IS NOT NULL
-    GROUP BY path
-    ORDER BY views DESC, clicks DESC
-    LIMIT 8
-  `, startStamp);
+  const summary = { ...evSummary };
+  const previous = { ...evPrevious };
+  summary.avgClicks = summary.visitors ? Math.round((summary.clicks / summary.visitors) * 10) / 10 : 0;
+  previous.avgClicks = previous.visitors ? Math.round((previous.clicks / previous.visitors) * 10) / 10 : 0;
+  Object.assign(summary, bizSummary);
+  Object.assign(previous, bizPrevious);
 
   // Fill every bucket so charts render continuous series
   const eventMap = new Map(eventRows.map((r) => [r.bucket, r]));
@@ -241,7 +298,7 @@ router.get('/internships/:id/answer-key', authenticateToken, adminOnly, async (r
 
 // ===================== USERS MANAGEMENT =====================
 router.get('/users', authenticateToken, adminOnly, async (req, res) => {
-  const users = await db.all('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users ORDER BY createdAt DESC');
+  const users = await db.all('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users ORDER BY createdAt DESC LIMIT ?', listLimit(req));
   res.json({ users: users.map((u) => (u.course ? { ...u, course: u.course.toUpperCase() } : u)) });
 });
 
@@ -279,7 +336,7 @@ router.post('/users', authenticateToken, adminOnly, async (req, res) => {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
-    const hashedPassword = bcrypt.hashSync(password, bcrypt.genSaltSync(BCRYPT_COST));
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     const result = await db.run(`
       INSERT INTO users (firstName, lastName, email, phone, university, college, course, year,
@@ -304,16 +361,18 @@ router.get('/users/:id', authenticateToken, adminOnly, async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.course) user.course = user.course.toUpperCase();
 
-  const enrollments = await db.all(`
-    SELECT e.*, i.title as internshipTitle
-    FROM enrollments e
-    JOIN internships i ON e.internshipId = i.id
-    WHERE e.userId = ?
-  `, req.params.id);
-
-  const payments = await db.all('SELECT * FROM payments WHERE userId = ? ORDER BY createdAt DESC', req.params.id);
-  const exams = await db.all('SELECT * FROM exams WHERE userId = ? ORDER BY id DESC', req.params.id);
-  const certificates = await db.all('SELECT * FROM certificates WHERE userId = ?', req.params.id);
+  // Independent per-user lists fetched together (4 serial round trips → 1 wave)
+  const [enrollments, payments, exams, certificates] = await Promise.all([
+    db.all(`
+      SELECT e.*, i.title as internshipTitle
+      FROM enrollments e
+      JOIN internships i ON e.internshipId = i.id
+      WHERE e.userId = ?
+    `, req.params.id),
+    db.all('SELECT * FROM payments WHERE userId = ? ORDER BY createdAt DESC', req.params.id),
+    db.all('SELECT * FROM exams WHERE userId = ? ORDER BY id DESC', req.params.id),
+    db.all('SELECT * FROM certificates WHERE userId = ?', req.params.id),
+  ]);
 
   res.json({ user, enrollments, payments, exams, certificates });
 });
@@ -332,11 +391,9 @@ router.delete('/users/:id', authenticateToken, adminOnly, async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.role === 'admin') return res.status(400).json({ error: 'Cannot delete admin users' });
 
-  await db.run('DELETE FROM certificates WHERE userId = ?', req.params.id);
-  await db.run('DELETE FROM exams WHERE userId = ?', req.params.id);
-  await db.run('DELETE FROM payments WHERE userId = ?', req.params.id);
-  await db.run('DELETE FROM enrollments WHERE userId = ?', req.params.id);
-  await db.run('DELETE FROM sessions WHERE userId = ?', req.params.id);
+  // Every child table (certificates, exams, payments, enrollments, sessions)
+  // references users(id) ON DELETE CASCADE — the five explicit DELETEs above
+  // this one were redundant round trips (6 → 1).
   await db.run('DELETE FROM users WHERE id = ?', req.params.id);
 
   res.json({ message: 'User deleted successfully' });
@@ -350,7 +407,8 @@ router.get('/enrollments', authenticateToken, adminOnly, async (req, res) => {
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
     ORDER BY e.enrolledAt DESC
-  `);
+    LIMIT ?
+  `, listLimit(req));
   res.json({ enrollments });
 });
 
@@ -401,14 +459,16 @@ router.put('/settings', authenticateToken, adminOnly, async (req, res) => {
     return res.status(400).json({ error: 'Verification link must start with http:// or https://' });
   }
   await setSettings(db, updates);
-  await refreshBrand();
-  res.json({ message: 'Settings updated', settings: await getAllSettings(db) });
+  // Both read the just-written state — run them together (2 RTTs → 1 wave)
+  const [, settings] = await Promise.all([refreshBrand(), getAllSettings(db)]);
+  res.json({ message: 'Settings updated', settings });
 });
 
 // ===================== PAYMENTS MANAGEMENT =====================
 router.get('/payments', authenticateToken, adminOnly, async (req, res) => {
   // Fail expired pending invoices before listing so the admin never sees
-  // (or approves) a payment whose time limit already ran out.
+  // (or approves) a payment whose time limit already ran out. Awaits first on
+  // purpose: the list must reflect the sweep (admin-facing, low frequency).
   await expirePendingPayments().catch((err) => console.error('Payment expiry sweep failed:', err.message));
 
   const payments = await db.all(`
@@ -417,7 +477,8 @@ router.get('/payments', authenticateToken, adminOnly, async (req, res) => {
     JOIN users u ON p.userId = u.id
     JOIN internships i ON i.id = p.internshipId
     ORDER BY p.createdAt DESC
-  `);
+    LIMIT ?
+  `, listLimit(req));
   res.json({ payments });
 });
 
@@ -471,13 +532,21 @@ router.put('/payments/:id/status', authenticateToken, adminOnly, async (req, res
 
 // ===================== EXAMS MANAGEMENT =====================
 router.get('/exams', authenticateToken, adminOnly, async (req, res) => {
+  // answers/servedQuestionIds (per-exam JSON blobs, tens of KB each) are
+  // intentionally excluded — the attempt editor fetches them via
+  // GET /exams/:id/attempt. Shipping them in the list made the response
+  // grow into megabytes.
   const exams = await db.all(`
-    SELECT e.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
+    SELECT e.id, e.userId, e.internshipId, e.enrollmentId, e.totalQuestions,
+           e.passingMarks, e.duration, e.scheduledAt, e.startedAt, e.completedAt,
+           e.score, e.status,
+           u.firstName, u.lastName, u.email, i.title as internshipTitle
     FROM exams e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
     ORDER BY e.id DESC
-  `);
+    LIMIT ?
+  `, listLimit(req));
   res.json({ exams });
 });
 
@@ -624,7 +693,8 @@ router.get('/certificates', authenticateToken, adminOnly, async (req, res) => {
     JOIN enrollments e ON c.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
     ORDER BY c.issuedAt DESC
-  `);
+    LIMIT ?
+  `, listLimit(req));
   res.json({ certificates });
 });
 
@@ -669,9 +739,9 @@ router.get('/questions', authenticateToken, adminOnly, async (req, res) => {
   const { track } = req.query;
   let questions;
   if (track) {
-    questions = await db.all('SELECT * FROM questions WHERE track = ? ORDER BY id ASC', track);
+    questions = await db.all('SELECT * FROM questions WHERE track = ? ORDER BY id ASC LIMIT ?', track, listLimit(req));
   } else {
-    questions = await db.all('SELECT * FROM questions ORDER BY track, id ASC');
+    questions = await db.all('SELECT * FROM questions ORDER BY track, id ASC LIMIT ?', listLimit(req));
   }
   res.json({ questions });
 });
@@ -714,16 +784,23 @@ router.post('/questions/bulk', authenticateToken, adminOnly, async (req, res) =>
     return res.status(400).json({ error: 'Invalid track' });
   }
 
-  const insert = ('INSERT INTO questions (track, question, optionA, optionB, optionC, optionD, correct) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  // Batched multi-row INSERTs: one statement per 100 questions inside the
+  // transaction instead of one round trip per question (100 questions used to
+  // be 100 sequential RTTs holding a pooled connection the whole time).
+  const CHUNK = 100;
   const insertMany = db.transaction(async (items) => {
-    let added = 0;
-    for (const q of items) {
-      if (q.question && q.optionA && q.optionB && q.optionC && q.optionD && [0, 1, 2, 3].includes(q.correct)) {
-        await db.run(insert, track, q.question, q.optionA, q.optionB, q.optionC, q.optionD, q.correct);
-        added++;
-      }
+    const valid = items.filter(
+      (q) => q.question && q.optionA && q.optionB && q.optionC && q.optionD && [0, 1, 2, 3].includes(q.correct)
+    );
+    for (let i = 0; i < valid.length; i += CHUNK) {
+      const chunk = valid.slice(i, i + CHUNK);
+      const tuples = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
+      await db.run(
+        `INSERT INTO questions (track, question, optionA, optionB, optionC, optionD, correct) VALUES ${tuples}`,
+        ...chunk.flatMap((q) => [track, q.question, q.optionA, q.optionB, q.optionC, q.optionD, q.correct])
+      );
     }
-    return added;
+    return valid.length;
   });
 
   const added = await insertMany(newQuestions);
@@ -771,9 +848,11 @@ router.delete('/questions/track/:track', authenticateToken, adminOnly, async (re
 
 // ===================== CONTACT MESSAGES (ISSUES) =====================
 router.get('/contact-messages', authenticateToken, adminOnly, async (req, res) => {
-  const messages = await db.all('SELECT * FROM contact_messages ORDER BY createdAt DESC, id DESC');
-  const unread = (await db.get("SELECT COUNT(*) AS count FROM contact_messages WHERE status = 'new'")).count;
-  res.json({ messages, unread });
+  const [messages, unreadRow] = await Promise.all([
+    db.all('SELECT * FROM contact_messages ORDER BY createdAt DESC, id DESC LIMIT ?', listLimit(req)),
+    db.get("SELECT COUNT(*) AS count FROM contact_messages WHERE status = 'new'"),
+  ]);
+  res.json({ messages, unread: unreadRow.count });
 });
 
 router.put('/contact-messages/:id/status', authenticateToken, adminOnly, async (req, res) => {

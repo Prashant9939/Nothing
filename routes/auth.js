@@ -38,7 +38,9 @@ const contactLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const DUMMY_HASH = bcrypt.hashSync('iqi-timing-equalizer', BCRYPT_COST);
+// Timing equalizer for the "no such user" path — computed lazily as a promise
+// so module load never blocks the event loop on a bcrypt hash.
+const DUMMY_HASH = bcrypt.hash('iqi-timing-equalizer', BCRYPT_COST);
 
 const signToken = (user) => {
   return jwt.sign(
@@ -151,7 +153,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       user = await db.get('SELECT * FROM users WHERE lower(trim(regNo)) = ? OR lower(trim(rollNo)) = ?', id, id);
     }
     if (!user) {
-      await bcrypt.compare(password, DUMMY_HASH);
+      await bcrypt.compare(password, await DUMMY_HASH);
       return res.status(401).json({ error: 'Invalid login details. Check your email or phone and password and try again.' });
     }
 
@@ -231,11 +233,11 @@ router.put('/change-password', authenticateToken, async (req, res) => {
     }
 
     const user = await db.get('SELECT id, password FROM users WHERE id = ?', req.user.id);
-    if (!bcrypt.compareSync(currentPassword, user.password)) {
+    if (!await bcrypt.compare(currentPassword, user.password)) {
       return res.status(400).json({ error: 'Current password is incorrect' });
     }
 
-    const hashed = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(BCRYPT_COST));
+    const hashed = await bcrypt.hash(newPassword, BCRYPT_COST);
     await db.run('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', hashed, req.user.id);
 
     // Password changed: every OTHER device's token dies immediately. The
@@ -314,7 +316,7 @@ router.post('/reset-password', recoveryLimiter, async (req, res) => {
       return res.status(404).json({ error: 'No account matches all of these details. Check each field and try again.' });
     }
 
-    const hashedPassword = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(BCRYPT_COST));
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_COST);
     await db.run('UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', hashedPassword, user.id);
 
     // Password reset (no authenticated session here): revoke EVERY issued

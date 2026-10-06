@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { studentApi } from '../../api';
 import type { Certificate, Enrollment, Exam } from '../../api';
-import { PageHeader, PageLoader, EmptyState, Button } from '../../components/ui';
+import { PageHeader, PageSkeleton, EmptyState, Button } from '../../components/ui';
 
 const primaryLink = 'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40';
 
@@ -43,7 +43,7 @@ export default function ExamPage() {
 
   useEffect(() => { load(); }, []);
 
-  if (loading) return <PageLoader label="Loading examination..." />;
+  if (loading) return <PageSkeleton label="Loading examination..." />;
 
   if (loadError) {
     return (

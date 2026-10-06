@@ -10,7 +10,7 @@ import {
   MessageCircleIcon, MailIcon, BookOpenTextIcon, CircleCheckIcon, CalendarDaysIcon,
   ExternalLinkIcon, ListChecksIcon, TimerIcon,
 } from '@animateicons/react/lucide';
-import { PageLoader, EmptyState, Button, Card, Badge } from '../../components/ui';
+import { PageSkeleton, EmptyState, Button, Card, Badge } from '../../components/ui';
 import { categoryImages } from '../../categories';
 import { WHATSAPP_CHANNEL_URL } from '../../constants';
 
@@ -68,7 +68,7 @@ export default function StudentDashboard() {
 
   useEffect(() => { load(); }, []);
 
-  if (loading) return <PageLoader label="Loading your dashboard..." />;
+  if (loading) return <PageSkeleton label="Loading your dashboard..." />;
 
   if (loadError || !data) {
     return (

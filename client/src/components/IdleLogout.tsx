@@ -21,6 +21,7 @@ export default function IdleLogout() {
   const logoutTimer = useRef<number | undefined>(undefined);
   const tickTimer = useRef<number | undefined>(undefined);
   const deadline = useRef(0);
+  const lastArm = useRef(0);
 
   const clearTimers = useCallback(() => {
     window.clearTimeout(warnTimer.current);
@@ -42,6 +43,7 @@ export default function IdleLogout() {
   // (Re)start the inactivity countdown — only touches timers, state resets
   // happen in the event handlers that call it
   const arm = useCallback(() => {
+    lastArm.current = Date.now();
     clearTimers();
     deadline.current = Date.now() + IDLE_LIMIT_MS;
     warnTimer.current = window.setTimeout(() => {
@@ -53,9 +55,12 @@ export default function IdleLogout() {
     logoutTimer.current = window.setTimeout(() => { endSession(); }, IDLE_LIMIT_MS);
   }, [clearTimers, endSession]);
 
+  // Re-arming tears down and creates 3 timers — doing that on every
+  // pointermove/scroll/wheel event (60-120 Hz) was pure background CPU.
+  // One re-arm every 30s keeps the 15-minute deadline accurate to ±30s.
   const onActivity = useCallback(() => {
     setSecondsLeft(null);
-    arm();
+    if (Date.now() - lastArm.current > 30000) arm();
   }, [arm]);
 
   useEffect(() => {

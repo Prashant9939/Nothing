@@ -39,8 +39,15 @@ export default function AnnouncementBell() {
 
   useEffect(() => {
     load();
-    const timer = setInterval(load, 60000);
-    return () => clearInterval(timer);
+    // Skip polls while the tab is hidden (background tabs used to hit the API
+    // every 60s forever); refresh immediately when the tab comes back.
+    const timer = setInterval(() => { if (!document.hidden) load(); }, 60000);
+    const onVisible = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [load]);
 
   useEffect(() => {

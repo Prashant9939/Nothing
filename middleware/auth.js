@@ -1,14 +1,14 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db');
-const sessions = require('../lib/sessions');
 
 const USER_COLUMNS = `
-  id, firstName, lastName, email, phone, university, college, course, year,
-  gender, dob, rollNo, regNo, guardianName, guardianPhone, guardianRelation,
-  role, createdAt
+  u.id, u.firstName, u.lastName, u.email, u.phone, u.university, u.college, u.course, u.year,
+  u.gender, u.dob, u.rollNo, u.regNo, u.guardianName, u.guardianPhone, u.guardianRelation,
+  u.role, u.createdAt
 `;
 
-const loadUser = async (id) => db.get(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`, id);
+// Same UTC 'YYYY-MM-DD HH:MM:SS' format lib/sessions.js writes expiresAt with.
+const utcNow = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -20,18 +20,28 @@ const authenticateToken = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await loadUser(decoded.id);
 
-    if (!user) {
+    // Single round trip: user row + session liveness in one query (the token
+    // is unique, so the LEFT JOIN yields at most one row). The LEFT JOIN keeps
+    // "user deleted" and "session revoked" distinguishable for the message.
+    const row = await db.get(`
+      SELECT ${USER_COLUMNS}, (s.token IS NOT NULL) AS sessionOk
+      FROM users u
+      LEFT JOIN sessions s ON s.token = ? AND s.userId = u.id AND s.expiresAt > ?
+      WHERE u.id = ?
+    `, token, utcNow(), decoded.id);
+
+    if (!row) {
       return res.status(401).json({ error: 'User not found. Please login again.' });
     }
 
     // Server-side revocation: a signed JWT is only honoured while its row in
     // `sessions` is alive (logout / password change / password reset delete it)
-    if (!(await sessions.isActive(token))) {
+    if (!row.sessionOk) {
       return res.status(401).json({ error: 'Session revoked. Please login again.' });
     }
 
+    const { sessionOk, ...user } = row;
     req.user = user;
     req.token = token;
     next();

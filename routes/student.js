@@ -108,44 +108,72 @@ router.put('/change-password', authenticateToken, async (req, res) => {
 
 // ===================== STUDENT DASHBOARD =====================
 router.get('/dashboard', authenticateToken, async (req, res) => {
-  await sweepPayments();
+  // Refresh expired invoices in the background instead of paying its round
+  // trip before the reads — the 60s interval (server.js) plus expireIfDue on
+  // the payment routes keep correctness; this just keeps the badge fresh.
+  sweepPayments();
 
-  const enrollments = await db.all(`
-    SELECT e.*, i.title as internshipTitle, i.category, i.duration, i.modules, i.topics
-    FROM enrollments e
-    JOIN internships i ON e.internshipId = i.id
-    WHERE e.userId = ?
-    ORDER BY e.enrolledAt DESC
-  `, req.user.id);
+  const [enrollments, payments, examRows, certificates, announcementRows, announcementCounts] = await Promise.all([
+    db.all(`
+      SELECT e.*, i.title as internshipTitle, i.category, i.duration, i.modules, i.topics
+      FROM enrollments e
+      JOIN internships i ON e.internshipId = i.id
+      WHERE e.userId = ?
+      ORDER BY e.enrolledAt DESC
+    `, req.user.id),
 
-  const payments = await db.all(`
-    SELECT p.*, i.title as internshipTitle
-    FROM payments p
-    JOIN internships i ON i.id = p.internshipId
-    WHERE p.userId = ?
-    ORDER BY p.createdAt DESC
-  `, req.user.id);
+    db.all(`
+      SELECT p.*, i.title as internshipTitle
+      FROM payments p
+      JOIN internships i ON i.id = p.internshipId
+      WHERE p.userId = ?
+      ORDER BY p.createdAt DESC
+    `, req.user.id),
 
-  const exams = (await db.all(`
-    SELECT e.*, i.title as internshipTitle, en.progress as courseProgress, en.status as enrollmentStatus,
-      (SELECT COUNT(*) FROM learning_modules lm WHERE lm.internshipId = i.id) as moduleCount
-    FROM exams e
-    JOIN internships i ON e.internshipId = i.id
-    JOIN enrollments en ON en.id = e.enrollmentId
-    WHERE e.userId = ?
-    ORDER BY e.id DESC
-  `, req.user.id)).map(exam => ({ ...exam, courseCompleted: isCourseCompleted(exam) }));
+    db.all(`
+      SELECT e.*, i.title as internshipTitle, en.progress as courseProgress, en.status as enrollmentStatus,
+        (SELECT COUNT(*) FROM learning_modules lm WHERE lm.internshipId = i.id) as moduleCount
+      FROM exams e
+      JOIN internships i ON e.internshipId = i.id
+      JOIN enrollments en ON en.id = e.enrollmentId
+      WHERE e.userId = ?
+      ORDER BY e.id DESC
+    `, req.user.id),
 
-  const certificates = await db.all(`
-    SELECT c.*, i.title as internshipTitle
-    FROM certificates c
-    JOIN enrollments e ON c.enrollmentId = e.id
-    JOIN internships i ON e.internshipId = i.id
-    WHERE c.userId = ?
-      AND EXISTS (
-        SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed'
-      )
-  `, req.user.id);
+    db.all(`
+      SELECT c.*, i.title as internshipTitle
+      FROM certificates c
+      JOIN enrollments e ON c.enrollmentId = e.id
+      JOIN internships i ON e.internshipId = i.id
+      WHERE c.userId = ?
+        AND EXISTS (
+          SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed'
+        )
+    `, req.user.id),
+
+    db.all(`
+      SELECT a.id, a.title, a.message, a.createdAt,
+        EXISTS(SELECT 1 FROM announcement_reads r WHERE r.announcementId = a.id AND r.userId = ?) AS isRead
+      FROM announcements a
+      ORDER BY a.createdAt DESC, a.id DESC
+      LIMIT 3
+    `, req.user.id),
+
+    // Total + the caller's unread count in one statement
+    db.get(`
+      SELECT COUNT(*) as total,
+             COUNT(*) FILTER (WHERE NOT EXISTS (
+               SELECT 1 FROM announcement_reads r WHERE r.announcementId = a.id AND r.userId = ?
+             )) as unread
+      FROM announcements a
+    `, req.user.id),
+  ]);
+  // The sweep intentionally runs fire-and-forget (sweepPayments catches its
+  // own errors): awaiting it before the response added a write round trip to
+  // every dashboard load.
+
+  const exams = examRows.map(exam => ({ ...exam, courseCompleted: isCourseCompleted(exam) }));
+  const announcements = announcementRows.map((a) => ({ id: a.id, title: a.title, message: a.message, createdAt: a.createdAt, read: !!a.isRead }));
 
   // Profile completeness over the five fields a student can edit (mirrors
   // EditProfile). Missing keys are surfaced so the dashboard can prompt.
@@ -190,24 +218,13 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
     }
   }
 
-  // Latest announcements + the student's global unread count (same shape the
-  // bell uses, capped so the dashboard stays one small query).
-  const announcements = (await db.all(`
-    SELECT a.id, a.title, a.message, a.createdAt,
-      EXISTS(SELECT 1 FROM announcement_reads r WHERE r.announcementId = a.id AND r.userId = ?) AS isRead
-    FROM announcements a
-    ORDER BY a.createdAt DESC, a.id DESC
-    LIMIT 3
-  `, req.user.id)).map((a) => ({ id: a.id, title: a.title, message: a.message, createdAt: a.createdAt, read: !!a.isRead }));
-  const announcementsUnread = (await db.get(`
-    SELECT COUNT(*) as count FROM announcements a
-    WHERE NOT EXISTS (SELECT 1 FROM announcement_reads r WHERE r.announcementId = a.id AND r.userId = ?)
-  `, req.user.id)).count;
-  const announcementsTotal = (await db.get('SELECT COUNT(*) as count FROM announcements')).count;
+  // Latest announcements + the student's global unread count come from the
+  // batched queries above (rows capped at 3, counts folded into one query).
 
   res.json({
     enrollments, payments, exams, certificates,
-    profileCompletion, nextExam, daysLeft, announcements, announcementsUnread, announcementsTotal,
+    profileCompletion, nextExam, daysLeft, announcements,
+    announcementsUnread: announcementCounts.unread, announcementsTotal: announcementCounts.total,
   });
 });
 
