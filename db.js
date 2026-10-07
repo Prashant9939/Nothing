@@ -48,13 +48,20 @@ const { uri: connectionString, wantsSsl } = normalizeDbUrl(rawConnectionString);
 const pool = new Pool({
   connectionString,
   ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
-  // Parallelized handlers issue several queries per request (Promise.all), so
-  // the pool needs headroom; 10 used to queue under two concurrent dashboards.
-  max: Number(process.env.PG_POOL_MAX) > 0 ? Number(process.env.PG_POOL_MAX) : 20,
-  idleTimeoutMillis: 30000,
-  // Fail fast on a dropped/hung TLS handshake instead of waiting for the
-  // serverless timeout — the retriable init gate (server.js) then retries.
-  connectionTimeoutMillis: 10000,
+  // Supabase's session-mode pooler hard-caps TOTAL connections at pool_size 15,
+  // shared across EVERY warm serverless instance. A per-instance max above 15
+  // (was 20) guaranteed EMAXCONNSESSION — "(EMAXCONNSESSION) max clients reached
+  // in session mode" → 500 on /api/student/dashboard under concurrent traffic.
+  // Keep each instance small (4): pg-pool queues extra borrowers locally
+  // instead of opening more server connections. Override with PG_POOL_MAX.
+  max: Number(process.env.PG_POOL_MAX) > 0 ? Number(process.env.PG_POOL_MAX) : 4,
+  // Release idle backends quickly so warm-but-quiet instances stop holding
+  // slots of the shared 15-connection budget for 30s at a time.
+  idleTimeoutMillis: 5000,
+  // Fail fast on a dropped/hung TLS handshake instead of waiting out the
+  // serverless timeout — and keep the worst case (timeout + one retry) inside
+  // the client's 15s axios timeout.
+  connectionTimeoutMillis: 5000,
   // Kill runaway statements instead of letting them pin a pooled connection (a
   // slow seq scan would otherwise queue every other query behind it). A startup
   // `options: '-c ...'` parameter is ignored by Supabase's pooler, so the
@@ -87,13 +94,32 @@ function toPg(sql) {
     .join('');
 }
 
+// Supabase's session-mode pooler rejects new connections once its shared
+// pool_size (15 across all warm serverless instances) is exhausted
+// (EMAXCONNSESSION), and handshakes can time out when it is saturated.
+// All of these fire BEFORE any statement runs, so one delayed retry is safe
+// for reads and writes alike — this turns the intermittent 500 on
+// /api/student/dashboard ("Couldn't load your documents") into a success.
+const TRANSIENT_CONNECT_RE = /EMAXCONNSESSION|timeout exceeded when trying to connect|Connection terminated due to connection timeout/i;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function withConnectRetry(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!err || !TRANSIENT_CONNECT_RE.test(err.message || '')) throw err;
+    await sleep(300);
+    return fn();
+  }
+}
+
 async function get(sql, ...params) {
-  const r = await executor().query(toPg(sql), params.length ? params : undefined);
+  const r = await withConnectRetry(() => executor().query(toPg(sql), params.length ? params : undefined));
   return r.rows[0] ?? null;
 }
 
 async function all(sql, ...params) {
-  const r = await executor().query(toPg(sql), params.length ? params : undefined);
+  const r = await withConnectRetry(() => executor().query(toPg(sql), params.length ? params : undefined));
   return r.rows;
 }
 
@@ -101,23 +127,23 @@ async function run(sql, ...params) {
   const base = String(sql).trim().replace(/;\s*$/, '');
   if (/^insert\b/i.test(base) && !/\breturning\b/i.test(base)) {
     try {
-      const r = await executor().query(toPg(`${base} RETURNING id`), params);
+      const r = await withConnectRetry(() => executor().query(toPg(`${base} RETURNING id`), params));
       return { changes: r.rowCount, lastInsertRowid: r.rows[0]?.id };
     } catch (err) {
       // 42703 = column "id" does not exist (e.g. announcement_reads has no id)
       if (err.code !== '42703') throw err;
     }
   }
-  const r = await executor().query(toPg(base), params);
+  const r = await withConnectRetry(() => executor().query(toPg(base), params));
   return { changes: r.rowCount, lastInsertRowid: undefined };
 }
 
 async function exec(sql) {
-  return executor().query(toPg(sql));
+  return withConnectRetry(() => executor().query(toPg(sql)));
 }
 
 async function tx(fn) {
-  const client = await pool.connect();
+  const client = await withConnectRetry(() => pool.connect());
   try {
     await client.query('BEGIN');
     const out = await als.run(client, () => fn(client));
