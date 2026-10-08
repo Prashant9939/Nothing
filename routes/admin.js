@@ -297,9 +297,16 @@ router.get('/internships/:id/answer-key', authenticateToken, adminOnly, async (r
 });
 
 // ===================== USERS MANAGEMENT =====================
+// Students only — admin accounts live in /admins, partner accounts in /partners.
 router.get('/users', authenticateToken, adminOnly, async (req, res) => {
-  const users = await db.all('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users ORDER BY createdAt DESC LIMIT ?', listLimit(req));
+  const users = await db.all("SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE role = 'student' ORDER BY createdAt DESC LIMIT ?", listLimit(req));
   res.json({ users: users.map((u) => (u.course ? { ...u, course: u.course.toUpperCase() } : u)) });
+});
+
+// Admin accounts (role = 'admin') for the Admins section of the admin panel.
+router.get('/admins', authenticateToken, adminOnly, async (req, res) => {
+  const admins = await db.all("SELECT id, firstName, lastName, email, phone, role, createdAt FROM users WHERE role = 'admin' ORDER BY createdAt DESC LIMIT ?", listLimit(req));
+  res.json({ users: admins });
 });
 
 // Register a student on behalf of the admin, with a chosen registration date
@@ -866,6 +873,117 @@ router.delete('/contact-messages/:id', authenticateToken, adminOnly, async (req,
   const result = await db.run('DELETE FROM contact_messages WHERE id = ?', req.params.id);
   if (!result.changes) return res.status(404).json({ error: 'Message not found' });
   res.json({ message: 'Message deleted' });
+});
+
+// ===================== PARTNERS =====================
+const { listPartners, getPartnerDetail } = require('../lib/partnerStats');
+
+// Partner roster with referral aggregates (students, payments, documents,
+// logins) for the Partners table.
+router.get('/partners', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const partners = await listPartners();
+    res.json({ partners });
+  } catch (err) {
+    console.error('List partners error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// One partner's full activity: profile, KPIs, students, payments,
+// documents and the merged activity timeline.
+router.get('/partners/:id', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const detail = await getPartnerDetail(Number(req.params.id));
+    if (!detail) return res.status(404).json({ error: 'Partner not found' });
+    res.json(detail);
+  } catch (err) {
+    console.error('Partner detail error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Activate / suspend a partner. Suspension revokes live sessions so the
+// partner is logged out immediately (middleware also rejects new requests).
+router.put('/partners/:id/status', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['active', 'suspended'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    const partner = await db.get("SELECT id FROM users WHERE id = ? AND role = 'partner'", Number(req.params.id));
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    await db.run('UPDATE users SET accountStatus = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', status, partner.id);
+    if (status === 'suspended') {
+      await db.run('DELETE FROM sessions WHERE userId = ?', partner.id);
+    }
+    res.json({ message: status === 'suspended' ? 'Partner suspended' : 'Partner activated' });
+  } catch (err) {
+    console.error('Partner status error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create a partner account (org contact with role=partner). Credentials are
+// returned to the admin to share with the partner.
+router.post('/partners', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const { firstName, lastName, email, phone, partnerName, password } = req.body;
+
+    if (!firstName || !email || !phone || !partnerName || !password) {
+      return res.status(400).json({ error: 'All required fields must be filled' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(String(email))) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    const policyError = passwordPolicyError(password);
+    if (policyError) {
+      return res.status(400).json({ error: policyError });
+    }
+
+    const normalized = String(email).toLowerCase();
+    const existing = await db.get('SELECT id FROM users WHERE email = ?', normalized);
+    if (existing) {
+      return res.status(409).json({ error: 'Email already registered' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
+
+    const result = await db.run(`
+      INSERT INTO users (firstName, lastName, email, phone, college, course, year, partnerName, password, role)
+      VALUES (?, ?, ?, ?, '', '', '', ?, ?, 'partner')
+    `, firstName, lastName || '', normalized, phone, partnerName, hashedPassword);
+
+    const partner = await db.get(`
+      SELECT id, firstName, lastName, email, phone, partnerName, accountStatus, createdAt
+      FROM users WHERE id = ?
+    `, result.lastInsertRowid);
+    res.status(201).json({ message: 'Partner created', partner });
+  } catch (err) {
+    console.error('Partner create error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete a partner account. Their registered students and attributed
+// enrollments stay in place (only the partner user row is removed).
+router.delete('/partners/:id', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const partner = await db.get("SELECT id FROM users WHERE id = ? AND role = 'partner'", id);
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+    if (req.user.id === id) return res.status(400).json({ error: 'You cannot delete your own account' });
+
+    await db.run('DELETE FROM users WHERE id = ?', id);
+    res.json({ message: 'Partner deleted' });
+  } catch (err) {
+    console.error('Partner delete error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = router;

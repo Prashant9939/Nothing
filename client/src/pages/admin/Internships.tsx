@@ -70,6 +70,9 @@ export default function AdminInternships() {
     try {
       const res = await fetch(`/api/admin/internships/${i.id}/answer-key`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        // Same stall guard as the student downloads: fetch never times out
+        // on its own, which would leave the button spinning forever.
+        signal: AbortSignal.timeout(60000),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -86,10 +89,16 @@ export default function AdminInternships() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
       popup.success('Answer key downloaded.', 'Answer Key');
     } catch (err: any) {
-      popup.error(err.message || 'Could not download the answer key. Please try again.', 'Download Failed');
+      const timedOut = err instanceof DOMException && err.name === 'TimeoutError';
+      popup.error(
+        timedOut
+          ? 'The download timed out. Please check your connection and try again.'
+          : err.message || 'Could not download the answer key. Please try again.',
+        'Download Failed'
+      );
     } finally {
       setDownloadingId(null);
     }

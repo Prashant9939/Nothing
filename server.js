@@ -18,6 +18,7 @@ const { expirePendingPayments } = require('./lib/payments');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const studentRoutes = require('./routes/student');
+const partnerRoutes = require('./routes/partner');
 const institutionRoutes = require('./routes/institutions');
 const announcementRoutes = require('./routes/announcements');
 const webhookRoutes = require('./routes/webhooks');
@@ -166,6 +167,7 @@ app.use(express.static(path.join(__dirname, 'client', 'dist'), {
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api/partner', partnerRoutes);
 app.use('/api/institutions', institutionRoutes);
 app.use('/api/announcements', announcementRoutes);
 // Public, unauthenticated form downloads (verification page)

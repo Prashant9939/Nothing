@@ -4,7 +4,7 @@ const db = require('../db');
 const USER_COLUMNS = `
   u.id, u.firstName, u.lastName, u.email, u.phone, u.university, u.college, u.course, u.year,
   u.gender, u.dob, u.rollNo, u.regNo, u.guardianName, u.guardianPhone, u.guardianRelation,
-  u.role, u.createdAt
+  u.role, u.partnerName, u.accountStatus, u.createdAt
 `;
 
 // Same UTC 'YYYY-MM-DD HH:MM:SS' format lib/sessions.js writes expiresAt with.
@@ -39,6 +39,12 @@ const authenticateToken = async (req, res, next) => {
     // `sessions` is alive (logout / password change / password reset delete it)
     if (!row.sessionOk) {
       return res.status(401).json({ error: 'Session revoked. Please login again.' });
+    }
+
+    // Suspended partners lose API access immediately — second layer behind the
+    // session revoke the admin endpoint performs (covers in-flight tokens).
+    if (row.role === 'partner' && row.accountStatus === 'suspended') {
+      return res.status(403).json({ error: 'Partner account is suspended. Contact support.' });
     }
 
     const { sessionOk, ...user } = row;

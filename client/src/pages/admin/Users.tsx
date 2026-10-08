@@ -55,7 +55,7 @@ export default function AdminUsers() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-bold text-gray-900">Manage Users</h1><p className="text-sm text-gray-500 mt-1">{users.length} registered users</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">Manage Users</h1><p className="text-sm text-gray-500 mt-1">{users.length} students · admin accounts are in <span className="text-slate-700 font-medium">Admins</span>, partner accounts in <span className="text-slate-700 font-medium">Partners</span></p></div>
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users..." className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm w-64 focus:outline-none focus:ring-2 focus:ring-slate-700/20 focus:border-slate-600 transition-all" />
       </div>
 

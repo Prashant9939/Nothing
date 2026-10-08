@@ -56,6 +56,8 @@ export interface User {
   course: string;
   year: string;
   role: string;
+  partnerName?: string;
+  accountStatus?: string;
   createdAt: string;
 }
 
@@ -261,6 +263,7 @@ export const adminApi = {
   updateInternship: (id: number, data: any) => api.put(`/admin/internships/${id}`, data),
   deleteInternship: (id: number) => api.delete(`/admin/internships/${id}`),
   getUsers: () => api.get('/admin/users'),
+  getAdmins: () => api.get('/admin/admins'),
   registerUser: (data: any) => api.post('/admin/users', data),
   getUser: (id: number) => api.get(`/admin/users/${id}`),
   updateUserRole: (id: number, role: string) => api.put(`/admin/users/${id}/role`, { role }),
@@ -294,6 +297,166 @@ export const adminApi = {
   updateContactMessageStatus: (id: number, status: 'new' | 'read') =>
     api.put<{ message: string }>(`/admin/contact-messages/${id}/status`, { status }),
   deleteContactMessage: (id: number) => api.delete<{ message: string }>(`/admin/contact-messages/${id}`),
+  getPartners: () => api.get<{ partners: PartnerListItem[] }>('/admin/partners'),
+  getPartner: (id: number) => api.get<PartnerDetail>(`/admin/partners/${id}`),
+  updatePartnerStatus: (id: number, status: 'active' | 'suspended') =>
+    api.put<{ message: string }>(`/admin/partners/${id}/status`, { status }),
+  createPartner: (data: CreatePartnerData) =>
+    api.post<{ message: string; partner: PartnerListItem }>('/admin/partners', data),
+  deletePartner: (id: number) => api.delete<{ message: string }>(`/admin/partners/${id}`),
+};
+
+export interface CreatePartnerData {
+  firstName: string;
+  lastName?: string;
+  email: string;
+  phone: string;
+  partnerName: string;
+  password: string;
+}
+
+// Partner program -------------------------------------------------------
+export interface PartnerListItem {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  partnerName: string;
+  accountStatus: 'active' | 'suspended';
+  createdAt: string;
+  registrations: number;
+  students: number;
+  activeStudents: number;
+  lastRegistration: string;
+  paidAmount: number;
+  paidCount: number;
+  pendingAmount: number;
+  documents: number;
+  logins: number;
+  lastLogin: string | null;
+}
+
+export interface PartnerStudentRow {
+  // Null for partner-registered accounts that have not enrolled yet.
+  enrollmentId: number | null;
+  enrollmentStatus: string;
+  progress: number;
+  enrolledAt: string;
+  programTitle: string;
+  programDuration: number;
+  studentId: number;
+  studentFirstName: string;
+  studentLastName: string;
+  studentEmail: string;
+  studentPhone: string;
+  studentCollege: string;
+  studentCourse: string;
+  paymentStatus: string | null;
+  paymentAmount: number | null;
+  receiptNumber: string | null;
+  paidAt: string | null;
+  certificateId: string | null;
+  grade: string | null;
+  score: number | null;
+  certificateIssuedAt: string | null;
+}
+
+export interface PartnerPaymentRow {
+  id: number;
+  amount: number;
+  method: string;
+  status: string;
+  receiptNumber: string | null;
+  transactionId: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  enrollmentId: number;
+  studentFirstName: string;
+  studentLastName: string;
+  programTitle: string;
+}
+
+export interface PartnerDocumentRow {
+  enrollmentId: number;
+  studentId: number;
+  offerNo: string | null;
+  reportNo: string | null;
+  attendanceNo: string | null;
+  enrollmentStatus: string;
+  studentFirstName: string;
+  studentLastName: string;
+  programTitle: string;
+  certificateId: string | null;
+  grade: string | null;
+  score: number | null;
+  certificateIssuedAt: string | null;
+  paid: boolean;
+}
+
+export interface PartnerActivityItem {
+  at: string;
+  type: 'login' | 'registration' | 'payment' | 'certificate';
+  title: string;
+  detail: string;
+}
+
+export interface PartnerDetail {
+  partner: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    partnerName: string;
+    accountStatus: 'active' | 'suspended';
+    createdAt: string;
+  };
+  kpis: {
+    students: number;
+    registrations: number;
+    activeStudents: number;
+    paidCount: number;
+    paidAmount: number;
+    pendingAmount: number;
+    certificates: number;
+    documents: number;
+    logins: number;
+    lastLogin: string | null;
+  };
+  students: PartnerStudentRow[];
+  payments: PartnerPaymentRow[];
+  documents: PartnerDocumentRow[];
+  activity: PartnerActivityItem[];
+}
+
+// Partner's own dashboard (role=partner) — same payload admin detail returns.
+export interface RegisterStudentData {
+  fullName?: string;
+  firstName: string;
+  lastName?: string;
+  email: string;
+  phone: string;
+  gender?: string;
+  dob?: string;
+  university: string;
+  college: string;
+  course: string;
+  year: string;
+  rollNo?: string;
+  regNo?: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  guardianRelation?: string;
+  password: string;
+}
+
+export const partnerApi = {
+  getDashboard: () => api.get<PartnerDetail>('/partner/dashboard'),
+  registerStudent: (data: RegisterStudentData) =>
+    api.post<{ message: string; user: { id: number; firstName: string; lastName: string; email: string } }>(
+      '/partner/students', data
+    ),
 };
 
 // Student API

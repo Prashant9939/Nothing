@@ -156,8 +156,8 @@ export default function StudentLayout() {
           {/* Brand */}
           <div className={`flex h-16 shrink-0 items-center border-b border-white/5 ${collapsed ? 'justify-center px-2' : 'px-5'}`}>
             <Link to="/" className="flex min-w-0 items-center gap-2.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_4px_12px_rgba(16,185,129,0.35)]">
-                <span className="text-xs font-bold text-white">IQ</span>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-white shadow-[0_4px_12px_rgba(16,185,129,0.35)]">
+                <img src="/logo/logo-iq.png" alt="IQIntern" className="h-7 w-7 object-contain" />
               </div>
               {!collapsed && (
                 <span className="hidden text-sm font-bold text-white lg:block">

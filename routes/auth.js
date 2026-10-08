@@ -74,6 +74,8 @@ const publicUser = (u) => ({
   guardianPhone: u.guardianPhone || '',
   guardianRelation: u.guardianRelation || '',
   role: u.role || 'student',
+  partnerName: u.partnerName || '',
+  accountStatus: u.accountStatus || 'active',
   createdAt: u.createdAt,
 });
 
@@ -160,6 +162,12 @@ router.post('/login', loginLimiter, async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid login details. Check your email or phone and password and try again.' });
+    }
+
+    // Checked after the password so the suspension state is never leaked to
+    // someone probing emails with wrong passwords.
+    if (user.role === 'partner' && user.accountStatus === 'suspended') {
+      return res.status(403).json({ error: 'Partner account is suspended. Contact support.' });
     }
 
     const token = signToken(user);

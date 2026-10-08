@@ -10,3 +10,4 @@ export { Input, PasswordField } from './Input';
 export { default as ErrorBoundary } from './ErrorBoundary';
 export { HamburgerButton, MobileMenuSheet } from './MobileMenu';
 export { menuItemClass, glCtaClass, glSecondaryClass } from './menuStyles';
+export { ctaPrimaryClass, ctaSecondaryDarkClass, ctaSecondaryLightClass, ctaTextLinkClass } from './ctaStyles';

@@ -62,6 +62,13 @@ const pool = new Pool({
   // serverless timeout — and keep the worst case (timeout + one retry) inside
   // the client's 15s axios timeout.
   connectionTimeoutMillis: 5000,
+  // TCP keepalive: pg leaves it OFF by default, so a connection silently cut
+  // by the pooler/NAT (no RST) never errors and its slot leaks — every query
+  // queued behind it then hangs forever (downloads stuck on a spinner with no
+  // response). Probes surface the dead socket as ECONNRESET within ~30s so the
+  // request fails visibly and the pool recovers.
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 30000,
   // Kill runaway statements instead of letting them pin a pooled connection (a
   // slow seq scan would otherwise queue every other query behind it). A startup
   // `options: '-c ...'` parameter is ignored by Supabase's pooler, so the
@@ -431,13 +438,27 @@ const migrations = [
   // Exam attempts record the exact questions served so grading uses the
   // served set as denominator, not every active question in the track.
   'ALTER TABLE exams ADD COLUMN IF NOT EXISTS servedQuestionIds TEXT',
+  // Partner program: partner org display name, per-partner suspension flag
+  // (named accountStatus — users has no status column and a bare `status`
+  // in joins must stay unambiguous), and the referral attribution column.
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS partnerName TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS accountStatus TEXT DEFAULT 'active'",
+  'ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS partnerId INTEGER',
+  // Account-level referral: partner-registered students keep their attribution
+  // even before they enroll (enrollments.partnerId is stamped from this at
+  // payment provisioning in lib/payments.js).
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS partnerId INTEGER',
 ];
 // Admin refund marks the enrollment 'refunded' (revoked) — the original CHECK
 // only allowed pending/active/completed/expired. Kept OUT of the batch:
 // ADD CONSTRAINT validates data, and a legacy row violating it must not roll
-// back the column adds above.
+// back the column adds above. Second statement widens the users role CHECK so
+// the partner role can exist (existing rows are only student/admin, so it
+// always validates).
 const CONSTRAINT_SQL = `ALTER TABLE enrollments DROP CONSTRAINT IF EXISTS enrollments_status_check,
-   ADD CONSTRAINT enrollments_status_check CHECK (status IN ('pending', 'active', 'completed', 'expired', 'refunded'))`;
+   ADD CONSTRAINT enrollments_status_check CHECK (status IN ('pending', 'active', 'completed', 'expired', 'refunded'));
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check,
+   ADD CONSTRAINT users_role_check CHECK (role IN ('student', 'admin', 'partner'))`;
 
 // Perf indexes — placed after the migrations because several reference columns
 // those migrations add (regNo, offerNo, ...). Covers columns that are filtered
@@ -453,6 +474,10 @@ const PERF_INDEXES_SQL = `
   CREATE INDEX IF NOT EXISTS idx_enrollments_attendance_no ON enrollments(attendanceNo);
   CREATE INDEX IF NOT EXISTS idx_users_created ON users(createdAt);
   CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
+  CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+  -- Partner attribution: every partner report filters/sorts enrollments by partnerId.
+  CREATE INDEX IF NOT EXISTS idx_enrollments_partner ON enrollments(partnerId);
+  CREATE INDEX IF NOT EXISTS idx_users_partner ON users(partnerId);
   CREATE INDEX IF NOT EXISTS idx_internships_active ON internships(isActive);
   -- Functional indexes: the login/verify lookups wrap columns in lower()/trim()/
   -- UPPER()/replace(), which defeats any plain index on the same column.
@@ -610,6 +635,10 @@ if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_PASSWORD) {
   console.warn('WARNING: ADMIN_PASSWORD is not set — the seeded admin account uses an insecure default. Set ADMIN_PASSWORD in .env and change the password after first login.');
 }
 
+// Demo partner account for the Partners dashboard (see seed block below).
+const partnerEmail = 'partner.demo@iqintern.in';
+const partnerPassword = process.env.PARTNER_PASSWORD || 'Partner@123';
+
 // Everything the seed pass below needs in ONE round trip: table counts, the
 // admin existence check, existing titles (extra-internship dedupe) and the
 // learning-module coverage count. These used to be 4 separate SELECTs.
@@ -619,8 +648,9 @@ const seedCounts = await db.get(`
     (SELECT COUNT(*) FROM universities) AS universities,
     (SELECT COUNT(*) FROM internships WHERE id NOT IN (SELECT DISTINCT internshipId FROM learning_modules)) AS tracksMissing,
     (SELECT json_agg(title) FROM internships) AS titles,
-    EXISTS(SELECT 1 FROM users WHERE email = ?) AS adminExists
-`, adminEmail);
+    EXISTS(SELECT 1 FROM users WHERE email = ?) AS adminExists,
+    EXISTS(SELECT 1 FROM users WHERE email = ?) AS partnerExists
+`, adminEmail, partnerEmail);
 
 if (!seedCounts.adminExists) {
   const hashedPassword = await bcrypt.hash(adminPassword, BCRYPT_COST);
@@ -629,6 +659,30 @@ if (!seedCounts.adminExists) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, 'Admin', 'IQIntern', adminEmail, '9999999999', 'IQIntern', 'admin', 'admin', hashedPassword, 'admin');
   console.log(`Admin user created: ${adminEmail}`);
+}
+
+// Demo partner account so the admin Partners section has a credential to
+// check up on. Seeded once (self-gating); it also claims a handful of paid
+// enrollments at creation time so the partner view has real activity.
+if (process.env.NODE_ENV !== 'production' && !seedCounts.partnerExists) {
+  try {
+    const hashedPassword = await bcrypt.hash(partnerPassword, BCRYPT_COST);
+    const result = await db.run(`
+      INSERT INTO users (firstName, lastName, email, phone, college, course, year, password, role, partnerName, accountStatus)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'partner', ?, 'active')
+    `, 'Demo', 'Partner', partnerEmail, '9876543210', 'Demo Partner Academy', 'partner', 'partner', hashedPassword, 'Demo Partner Academy');
+    await db.run(`
+      UPDATE enrollments SET partnerId = ?
+      WHERE partnerId IS NULL AND id IN (
+        SELECT e.id FROM enrollments e
+        WHERE EXISTS (SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed')
+        ORDER BY e.id LIMIT 8
+      )
+    `, result.lastInsertRowid);
+    console.log(`Demo partner user created: ${partnerEmail} (password ${partnerPassword})`);
+  } catch (err) {
+    console.error('Demo partner seed failed:', err.message);
+  }
 }
 
 if (seedCounts.internships === 0) {

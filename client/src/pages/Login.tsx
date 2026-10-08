@@ -25,6 +25,8 @@ export default function Login() {
     if (isLoading || !isAuthenticated) return;
     if (user?.role === 'admin') {
       navigate('/admin', { replace: true });
+    } else if (user?.role === 'partner') {
+      navigate('/partner', { replace: true });
     } else {
       studentApi.getEnrollmentStatus()
         .then(res => navigate(res.data.hasEnrollment ? '/student' : '/student/select-track', { replace: true }))
@@ -41,7 +43,7 @@ export default function Login() {
       await login(email, password, remember);
       try {
         const u = JSON.parse(localStorage.getItem('user') || 'null');
-        if (u && u.role !== 'admin') sessionStorage.setItem('iq:channel-banner', '1');
+        if (u && u.role !== 'admin' && u.role !== 'partner') sessionStorage.setItem('iq:channel-banner', '1');
       } catch {
         sessionStorage.setItem('iq:channel-banner', '1');
       }
@@ -60,8 +62,8 @@ export default function Login() {
     <AuthSplit>
       <div>
         <Link to="/" className="inline-flex items-center gap-2.5 mb-4">
-          <div className="w-10 h-10 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/30 hover:scale-105 transition-all duration-300">
-            <span className="text-white font-bold text-base">IQ</span>
+          <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/25 ring-1 ring-orange-100 hover:scale-105 transition-all duration-300">
+            <img src="/logo/logo-iq.png" alt="IQIntern" className="h-7 w-7 object-contain" />
           </div>
         </Link>
         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Welcome back</h1>

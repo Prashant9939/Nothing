@@ -39,16 +39,35 @@ const hasPassedAccess = async (enrollmentId, userId) => {
   return row.enrollmentStatus === 'completed';
 };
 
-// Shared loader for the exam-gated documents below.
-const loadEnrollment = (enrollmentId, userId) => db.get(`
+// Shared loader for the exam-gated documents below. Ownership is enforced by
+// canAccessStudent after the fetch so partners/admins can load a row too.
+const loadEnrollment = (enrollmentId) => db.get(`
   SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, u.year,
          u.rollNo, u.regNo, u.university,
          i.title as internshipTitle, i.duration, i.modules, i.category
   FROM enrollments e
   JOIN users u ON e.userId = u.id
   JOIN internships i ON e.internshipId = i.id
-  WHERE e.id = ? AND e.userId = ?
-`, enrollmentId, userId);
+  WHERE e.id = ?
+`, enrollmentId);
+
+// Row-level access for downloads: the student who owns the row, an admin, or
+// the partner the student is attributed to (account-level users.partnerId or
+// enrollment-level enrollments.partnerId). Everything else is a 404 — a
+// stranger must not learn that the row exists.
+const canAccessStudent = async (req, userId) => {
+  if (!userId || !req.user) return false;
+  if (req.user.role === 'admin') return true;
+  if (req.user.id === userId) return true;
+  if (req.user.role !== 'partner') return false;
+  const link = await db.get(`
+    SELECT 1 FROM users WHERE id = ? AND partnerId = ?
+    UNION ALL
+    SELECT 1 FROM enrollments WHERE userId = ? AND partnerId = ?
+    LIMIT 1
+  `, userId, req.user.id, userId, req.user.id);
+  return !!link;
+};
 
 // ===================== BRANDING =====================
 const LOGO_FILE = path.join(__dirname, '..', 'client', 'public', 'logo', 'logo-full.png');
@@ -440,8 +459,10 @@ router.get('/download/receipt/:paymentId', authenticateToken, async (req, res) =
     JOIN users u ON p.userId = u.id
     JOIN enrollments e ON p.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
-    WHERE p.id = ? AND p.userId = ?
-  `, req.params.paymentId, req.user.id);
+    WHERE p.id = ?
+  `, req.params.paymentId);
+
+  if (!payment || !(await canAccessStudent(req, payment.userId))) return res.status(404).json({ error: 'Payment not found' });
 
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
   if (payment.status !== 'completed') return res.status(403).json({ error: 'Payment not completed yet — receipts are issued after a successful payment.' });
@@ -514,11 +535,11 @@ router.get('/download/offer-letter/:enrollmentId', authenticateToken, async (req
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
-    WHERE e.id = ? AND e.userId = ?
-  `, req.params.enrollmentId, req.user.id);
+    WHERE e.id = ?
+  `, req.params.enrollmentId);
 
-  if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPaidAccess(enrollment.id, req.user.id))) {
+  if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasPaidAccess(enrollment.id, enrollment.userId))) {
     return res.status(403).json({ error: 'Complete payment to download the offer letter.' });
   }
 
@@ -602,11 +623,11 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
     JOIN users u ON c.userId = u.id
     JOIN enrollments e ON c.enrollmentId = e.id
     JOIN internships i ON e.internshipId = i.id
-    WHERE c.certificateId = ? AND c.userId = ?
-  `, req.params.certId, req.user.id);
+    WHERE c.certificateId = ?
+  `, req.params.certId);
 
-  if (!cert) return res.status(404).json({ error: 'Certificate not found' });
-  if (!(await hasPaidAccess(cert.enrollmentId, req.user.id))) {
+  if (!cert || !(await canAccessStudent(req, cert.userId))) return res.status(404).json({ error: 'Certificate not found' });
+  if (!(await hasPaidAccess(cert.enrollmentId, cert.userId))) {
     return res.status(403).json({ error: 'Complete payment to download the certificate.' });
   }
 
@@ -826,11 +847,11 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
-    WHERE e.id = ? AND e.userId = ?
-  `, req.params.enrollmentId, req.user.id);
+    WHERE e.id = ?
+  `, req.params.enrollmentId);
 
-  if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPaidAccess(enrollment.id, req.user.id))) {
+  if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasPaidAccess(enrollment.id, enrollment.userId))) {
     return res.status(403).json({ error: 'Complete payment to download the internship report.' });
   }
 
@@ -895,11 +916,11 @@ router.get('/download/attendance/:enrollmentId', authenticateToken, async (req, 
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
-    WHERE e.id = ? AND e.userId = ?
-  `, req.params.enrollmentId, req.user.id);
+    WHERE e.id = ?
+  `, req.params.enrollmentId);
 
-  if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPaidAccess(enrollment.id, req.user.id))) {
+  if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasPaidAccess(enrollment.id, enrollment.userId))) {
     return res.status(403).json({ error: 'Complete payment to download the attendance sheet.' });
   }
 
@@ -1148,9 +1169,9 @@ function streamLogBook(res, d) {
 }
 
 router.get('/download/log-book/:enrollmentId', authenticateToken, async (req, res) => {
-  const enrollment = await loadEnrollment(req.params.enrollmentId, req.user.id);
-  if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPassedAccess(enrollment.id, req.user.id))) {
+  const enrollment = await loadEnrollment(req.params.enrollmentId);
+  if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasPassedAccess(enrollment.id, enrollment.userId))) {
     return res.status(403).json({ error: 'Pass the exam to download the daily log book.' });
   }
 
@@ -1279,9 +1300,9 @@ function streamMarksheet(res, d) {
 }
 
 router.get('/download/marksheet/:enrollmentId', authenticateToken, async (req, res) => {
-  const enrollment = await loadEnrollment(req.params.enrollmentId, req.user.id);
-  if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPassedAccess(enrollment.id, req.user.id))) {
+  const enrollment = await loadEnrollment(req.params.enrollmentId);
+  if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasPassedAccess(enrollment.id, enrollment.userId))) {
     return res.status(403).json({ error: 'Pass the exam to download the marksheet.' });
   }
 
@@ -1340,9 +1361,9 @@ router.get('/download/form/:type/:enrollmentId', authenticateToken, async (req, 
   const key = String(req.params.type || '').toLowerCase();
   if (!FORM_TYPES.includes(key)) return res.status(404).json({ error: 'Unknown form type' });
 
-  const enrollment = await loadEnrollment(req.params.enrollmentId, req.user.id);
-  if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPassedAccess(enrollment.id, req.user.id))) {
+  const enrollment = await loadEnrollment(req.params.enrollmentId);
+  if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
+  if (!(await hasPassedAccess(enrollment.id, enrollment.userId))) {
     return res.status(403).json({ error: 'Pass the exam to download this form.' });
   }
 

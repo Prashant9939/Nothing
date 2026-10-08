@@ -23,10 +23,14 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const Terms = lazy(() => import('./pages/Terms'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const FAQ = lazy(() => import('./pages/FAQ'));
+const Partner = lazy(() => import('./pages/Partner'));
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 const AdminAnalytics = lazy(() => import('./pages/admin/Analytics'));
 const AdminInternships = lazy(() => import('./pages/admin/Internships'));
 const AdminUsers = lazy(() => import('./pages/admin/Users'));
+const AdminAdmins = lazy(() => import('./pages/admin/Admins'));
+const AdminPartners = lazy(() => import('./pages/admin/Partners'));
+const AdminPartnerDetail = lazy(() => import('./pages/admin/PartnerDetail'));
 const AdminPayments = lazy(() => import('./pages/admin/Payments'));
 const AdminExams = lazy(() => import('./pages/admin/Exams'));
 const AdminMarks = lazy(() => import('./pages/admin/Marks'));
@@ -46,6 +50,11 @@ const Documents = lazy(() => import('./pages/student/Documents'));
 const Learning = lazy(() => import('./pages/student/Learning'));
 const ExamPage = lazy(() => import('./pages/student/ExamPage'));
 const EditProfile = lazy(() => import('./pages/student/EditProfile'));
+const PartnerDashboard = lazy(() => import('./pages/partner/Dashboard'));
+const PartnerStudents = lazy(() => import('./pages/partner/Students'));
+const PartnerPayments = lazy(() => import('./pages/partner/Payments'));
+const PartnerDocuments = lazy(() => import('./pages/partner/Documents'));
+const PartnerLayout = lazy(() => import('./components/PartnerLayout'));
 
 function ProtectedRoute({ children, role }: { children: React.ReactNode; role?: string }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -101,6 +110,7 @@ function App() {
             <Route path="/terms" element={<Layout><Terms /></Layout>} />
             <Route path="/privacy" element={<Layout><Privacy /></Layout>} />
             <Route path="/faq" element={<Layout><FAQ /></Layout>} />
+            <Route path="/partners" element={<Layout><Partner /></Layout>} />
             <Route path="*" element={<Layout><NotFound /></Layout>} />
 
             {/* Admin Routes */}
@@ -109,6 +119,9 @@ function App() {
               <Route path="analytics" element={<AdminAnalytics />} />
               <Route path="internships" element={<AdminInternships />} />
               <Route path="users" element={<AdminUsers />} />
+              <Route path="admins" element={<AdminAdmins />} />
+              <Route path="partners" element={<AdminPartners />} />
+              <Route path="partners/:id" element={<AdminPartnerDetail />} />
               <Route path="payments" element={<AdminPayments />} />
               <Route path="questions" element={<AdminQuestions />} />
               <Route path="exams" element={<AdminExams />} />
@@ -117,6 +130,14 @@ function App() {
               <Route path="announcements" element={<AdminAnnouncements />} />
               <Route path="issues" element={<AdminIssues />} />
               <Route path="settings" element={<AdminSettings />} />
+            </Route>
+
+            {/* Partner Routes (portal; public landing lives at /partners) */}
+            <Route path="/partner" element={<ProtectedRoute role="partner"><Suspense fallback={<div className="flex h-screen items-center justify-center"><Spinner size={36} /></div>}><PartnerLayout /></Suspense></ProtectedRoute>}>
+              <Route index element={<PartnerDashboard />} />
+              <Route path="students" element={<PartnerStudents />} />
+              <Route path="payments" element={<PartnerPayments />} />
+              <Route path="documents" element={<PartnerDocuments />} />
             </Route>
 
             {/* Student Routes */}

@@ -34,6 +34,7 @@ export default function Navbar() {
     { path: '/programs', label: 'Programs' },
     { path: '/certification', label: 'Verify' },
     { path: '/about', label: 'About' },
+    { path: '/partners', label: 'Partners' },
     { path: '/contact', label: 'Contact' },
   ];
 
@@ -95,6 +96,10 @@ export default function Navbar() {
                     <Link to="/admin" className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 rounded-full hover:from-amber-600 hover:to-orange-700 transition-all shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/30 hover:-translate-y-0.5">
                       Admin Panel
                     </Link>
+                  ) : user?.role === 'partner' ? (
+                    <Link to="/partner" className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 rounded-full hover:from-amber-600 hover:to-orange-700 transition-all shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/30 hover:-translate-y-0.5">
+                      Partner Portal
+                    </Link>
                   ) : (
                     <Link to="/student" className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 rounded-full hover:from-amber-600 hover:to-orange-700 transition-all shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/30 hover:-translate-y-0.5">
                       Dashboard
@@ -143,11 +148,11 @@ export default function Navbar() {
           {isAuthenticated ? (
             <>
               <Link
-                to={user?.role === 'admin' ? '/admin' : '/student'}
+                to={user?.role === 'admin' ? '/admin' : user?.role === 'partner' ? '/partner' : '/student'}
                 onClick={() => setMobileOpen(false)}
                 className={glCtaClass}
               >
-                {user?.role === 'admin' ? 'Admin Panel' : 'Dashboard'}
+                {user?.role === 'admin' ? 'Admin Panel' : user?.role === 'partner' ? 'Partner Portal' : 'Dashboard'}
               </Link>
               <button type="button" onClick={handleLogout} className={glSecondaryClass}>
                 Logout

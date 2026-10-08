@@ -78,8 +78,8 @@ export default function ForgotPassword() {
     <AuthSplit>
       <div>
         <Link to="/" className="inline-flex items-center gap-2.5 mb-4">
-          <div className="w-10 h-10 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/30 hover:scale-105 transition-all duration-300">
-            <span className="text-white font-bold text-base">IQ</span>
+          <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/25 ring-1 ring-orange-100 hover:scale-105 transition-all duration-300">
+            <img src="/logo/logo-iq.png" alt="IQIntern" className="h-7 w-7 object-contain" />
           </div>
         </Link>
         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Reset password</h1>

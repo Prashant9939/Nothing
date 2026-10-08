@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Clock, Lock, Mail, MapPin, MessageSquare, Phone, Target } from 'lucide-react';
 import api from '../api';
 
 export default function Contact() {
-  const [form, setForm] = useState({ name: '', email: '', phone: '', subject: '', message: '' });
+  // Deep links like /contact?subject=partnership pre-select the topic so
+  // CTAs from other pages land on a ready-to-send form.
+  const [searchParams] = useSearchParams();
+  const [form, setForm] = useState({ name: '', email: '', phone: '', subject: searchParams.get('subject') || '', message: '' });
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

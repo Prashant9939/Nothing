@@ -58,7 +58,13 @@ export default function DocumentsList() {
     const token = localStorage.getItem('token');
     const finalName = studentName ? `${studentName} - ${filename}` : filename;
     try {
-      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        // A dropped connection must fail the spinner instead of spinning
+        // forever: fetch has no default timeout and TCP retransmits for
+        // many minutes before erroring on its own.
+        signal: AbortSignal.timeout(60000),
+      });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const blob = await r.blob();
       const a = document.createElement('a');
@@ -66,9 +72,17 @@ export default function DocumentsList() {
       a.href = href;
       a.download = finalName;
       a.click();
-      URL.revokeObjectURL(href);
+      // Revoking synchronously can cancel the download before the browser
+      // finishes reading the blob URL; give it a few seconds first.
+      setTimeout(() => URL.revokeObjectURL(href), 5000);
     } catch (err) {
-      popup.error(`Could not download ${finalName}. Please try again.`, 'Download Failed');
+      const timedOut = err instanceof DOMException && err.name === 'TimeoutError';
+      popup.error(
+        timedOut
+          ? `Downloading ${finalName} timed out. Please check your connection and try again.`
+          : `Could not download ${finalName}. Please try again.`,
+        'Download Failed'
+      );
       throw err;
     }
   };
