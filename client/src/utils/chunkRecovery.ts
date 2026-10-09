@@ -24,7 +24,7 @@ const RELOAD_COOLDOWN_MS = 20000;
 //   React lazy:  "A component suspended..." wrappers still carry the above
 //   text in the message chain.
 const CHUNK_ERROR_RE =
-  /dynamically imported module|importing a module script failed|module script failed|failed to load chunk|loading chunk|loading css chunk|networkerror when attempting to fetch resource|error loading dynamically imported/i;
+  /dynamically imported module|importing a module script failed|failed to load module script|module script failed|failed to load chunk|loading chunk|loading css chunk|networkerror when attempting to fetch resource|error loading dynamically imported/i;
 
 export function isChunkLoadError(error: unknown): boolean {
   const message =

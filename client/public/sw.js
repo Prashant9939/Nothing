@@ -1,5 +1,12 @@
-const CACHE = 'app-shell-v1';
+const CACHE = 'app-shell-v2';
 const OFFLINE_URL = '/offline.html';
+
+// Assets are content-hashed JS/CSS/images — NEVER HTML. A missing asset can
+// briefly get answered with index.html (SPA fallback) during a deploy race;
+// caching or serving that would poison the URL forever, because the next
+// import() would receive HTML instead of JS even after a refresh.
+const isAssetResponse = (response) =>
+  !(response.headers.get('content-type') || '').toLowerCase().includes('text/html');
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -45,9 +52,13 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/assets/') || url.pathname === '/offline.js') {
     event.respondWith(
       caches.match(request).then((cached) => {
-        if (cached) return cached;
+        if (cached && isAssetResponse(cached)) return cached;
+        if (cached) {
+          // Heal a previously poisoned entry (old SW cached an HTML fallback).
+          caches.open(CACHE).then((cache) => cache.delete(request));
+        }
         return fetch(request).then((response) => {
-          if (response.ok) {
+          if (response.ok && isAssetResponse(response)) {
             const copy = response.clone();
             caches.open(CACHE).then((cache) => cache.put(request, copy));
           }
