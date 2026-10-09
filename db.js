@@ -59,9 +59,12 @@ const pool = new Pool({
   // slots of the shared 15-connection budget for 30s at a time.
   idleTimeoutMillis: 5000,
   // Fail fast on a dropped/hung TLS handshake instead of waiting out the
-  // serverless timeout — and keep the worst case (timeout + one retry) inside
-  // the client's 15s axios timeout.
-  connectionTimeoutMillis: 5000,
+  // serverless timeout — but leave enough room for a slow handshake to the
+  // Singapore pooler (idle connections are dropped after 5s, so bursts of
+  // fresh connects happen constantly; a Wi-Fi blip or a busy shared pool can
+  // push one past 5s). 7s + the single connect retry + backoff = 14.3s worst
+  // case, still inside the client's 15s axios timeout.
+  connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS) > 0 ? Number(process.env.PG_CONNECT_TIMEOUT_MS) : 7000,
   // TCP keepalive: pg leaves it OFF by default, so a connection silently cut
   // by the pooler/NAT (no RST) never errors and its slot leaks — every query
   // queued behind it then hangs forever (downloads stuck on a spinner with no

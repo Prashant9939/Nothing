@@ -200,9 +200,41 @@ app.use((err, req, res, next) => {
 // on Vercel, where the instance can freeze between requests — there the
 // lazy checks (plus the sweep at db init) are enough.
 if (!process.env.VERCEL) {
-  setInterval(() => {
-    expirePendingPayments().catch((err) => console.error('Payment expiry sweep failed:', err.message));
-  }, 60 * 1000).unref();
+  // The sweep runs every minute, and because idle pool connections are closed
+  // after a few seconds each run usually opens a FRESH TLS session to the
+  // Supabase pooler (~1-2s normally). A Wi-Fi blip, PC sleep or a busy shared
+  // pool can push that past the connect timeout for a while — so:
+  //   * retry with backoff (the sweep is a background job, it has no client
+  //     waiting on it and the underlying query layer already retries once),
+  //   * log only the FIRST failure of an outage streak, then stay quiet and
+  //     keep retrying, announcing recovery — one network wobble must never
+  //     spam the terminal like an app-wide crash.
+  // Correctness never depends on this timer: expiry also runs at db init and
+  // lazily on every payment/dashboard read.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let sweepDown = false;
+  const sweepPayments = async () => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await expirePendingPayments();
+        if (sweepDown) {
+          sweepDown = false;
+          console.log('Payment expiry sweep recovered.');
+        }
+        return;
+      } catch (err) {
+        if (attempt === 3) {
+          if (!sweepDown) {
+            sweepDown = true;
+            console.error(`Payment expiry sweep failed (database unreachable, will keep retrying quietly every minute): ${err.message}`);
+          }
+          return;
+        }
+        await sleep(attempt * 2000);
+      }
+    }
+  };
+  setInterval(sweepPayments, 60 * 1000).unref();
 }
 
 // Locally: start listening only once the database and brand are ready.
