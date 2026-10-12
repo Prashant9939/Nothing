@@ -7,6 +7,7 @@ const { completePayment, expirePendingPayments } = require('../lib/payments');
 const { refreshBrand } = require('../lib/documentBrand');
 const { streamAnswerKey } = require('../lib/answerKeyPdf');
 const { passwordPolicyError, BCRYPT_COST } = require('../lib/passwordPolicy');
+const { makeTtlCache } = require('../lib/ttlCache');
 
 const router = express.Router();
 
@@ -114,8 +115,7 @@ const utcStamp = (d) =>
 const localDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const localHour = (d) => `${localDay(d)} ${pad2(d.getHours())}:00`;
 
-router.get('/analytics', authenticateToken, adminOnly, async (req, res) => {
-  const range = ANALYTICS_RANGES[req.query.range] ? req.query.range : '7d';
+const computeAnalytics = async (range) => {
   const { days, hourly } = ANALYTICS_RANGES[range];
 
   const now = new Date();
@@ -220,7 +220,16 @@ router.get('/analytics', authenticateToken, adminOnly, async (req, res) => {
     for (let i = days - 1; i >= 0; i--) pushBucket(localDay(new Date(cur.getTime() - i * 24 * 60 * 60 * 1000)));
   }
 
-  res.json({ range, hourly, summary, previous, series, topPages });
+  return { range, hourly, summary, previous, series, topPages };
+};
+
+// 8 queries per hit, and the admin page refetches on every navigation/range
+// switch — cache per range for 30s with single-flight (dashboard pattern above).
+const analyticsCache = makeTtlCache(30000);
+
+router.get('/analytics', authenticateToken, adminOnly, async (req, res) => {
+  const range = ANALYTICS_RANGES[req.query.range] ? req.query.range : '7d';
+  res.json(await analyticsCache(range, () => computeAnalytics(range)));
 });
 
 // ===================== INTERNSHIPS CRUD =====================
@@ -377,7 +386,13 @@ router.get('/users/:id', authenticateToken, adminOnly, async (req, res) => {
       WHERE e.userId = ?
     `, req.params.id),
     db.all('SELECT * FROM payments WHERE userId = ? ORDER BY createdAt DESC', req.params.id),
-    db.all('SELECT * FROM exams WHERE userId = ? ORDER BY id DESC', req.params.id),
+    // Drop the per-attempt `answers`/`servedQuestionIds` JSON blobs — the
+    // admin Users panel renders scores/status only (mirrors the exam list).
+    db.all(`
+      SELECT id, userId, internshipId, enrollmentId, totalQuestions, passingMarks,
+        duration, scheduledAt, startedAt, completedAt, score, status
+      FROM exams WHERE userId = ? ORDER BY id DESC
+    `, req.params.id),
     db.all('SELECT * FROM certificates WHERE userId = ?', req.params.id),
   ]);
 
@@ -472,11 +487,27 @@ router.put('/settings', authenticateToken, adminOnly, async (req, res) => {
 });
 
 // ===================== PAYMENTS MANAGEMENT =====================
+// The list must reflect expired invoices (admin-facing correctness), but a
+// burst of list loads should not pay one write round trip each: run at most
+// one sweep per 10s, sharing the in-flight promise between concurrent loads.
+let lastSweepAt = 0;
+let sweepInFlight = null;
+const sweepThrottled = () => {
+  const now = Date.now();
+  if (sweepInFlight) return sweepInFlight;
+  if (now - lastSweepAt < 10000) return Promise.resolve();
+  lastSweepAt = now;
+  sweepInFlight = expirePendingPayments()
+    .catch((err) => console.error('Payment expiry sweep failed:', err.message))
+    .finally(() => { sweepInFlight = null; });
+  return sweepInFlight;
+};
+
 router.get('/payments', authenticateToken, adminOnly, async (req, res) => {
   // Fail expired pending invoices before listing so the admin never sees
-  // (or approves) a payment whose time limit already ran out. Awaits first on
-  // purpose: the list must reflect the sweep (admin-facing, low frequency).
-  await expirePendingPayments().catch((err) => console.error('Payment expiry sweep failed:', err.message));
+  // (or approves) a payment whose time limit already ran out. Awaits the
+  // (throttled) sweep first on purpose: the list must reflect it.
+  await sweepThrottled();
 
   const payments = await db.all(`
     SELECT p.*, u.firstName, u.lastName, u.email, i.title as internshipTitle
@@ -926,13 +957,21 @@ router.put('/partners/:id/status', authenticateToken, adminOnly, async (req, res
 });
 
 // Create a partner account (org contact with role=partner). Credentials are
-// returned to the admin to share with the partner.
+// returned to the admin to share with the partner. commissionPercent is the
+// payout rate: that share of every completed payment from students the
+// partner registers is added to the partner's commission payout.
 router.post('/partners', authenticateToken, adminOnly, async (req, res) => {
   try {
-    const { firstName, lastName, email, phone, partnerName, password } = req.body;
+    const { firstName, lastName, email, phone, partnerName, password, commissionPercent } = req.body;
 
     if (!firstName || !email || !phone || !partnerName || !password) {
       return res.status(400).json({ error: 'All required fields must be filled' });
+    }
+
+    const pct = commissionPercent === undefined || commissionPercent === null || commissionPercent === ''
+      ? 0 : Number(commissionPercent);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      return res.status(400).json({ error: 'Commission must be a percentage between 0 and 100' });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -954,17 +993,92 @@ router.post('/partners', authenticateToken, adminOnly, async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     const result = await db.run(`
-      INSERT INTO users (firstName, lastName, email, phone, college, course, year, partnerName, password, role)
-      VALUES (?, ?, ?, ?, '', '', '', ?, ?, 'partner')
-    `, firstName, lastName || '', normalized, phone, partnerName, hashedPassword);
+      INSERT INTO users (firstName, lastName, email, phone, college, course, year, partnerName, commissionPercent, password, role)
+      VALUES (?, ?, ?, ?, '', '', '', ?, ?, ?, 'partner')
+    `, firstName, lastName || '', normalized, phone, partnerName, pct, hashedPassword);
 
     const partner = await db.get(`
-      SELECT id, firstName, lastName, email, phone, partnerName, accountStatus, createdAt
+      SELECT id, firstName, lastName, email, phone, partnerName, commissionPercent, accountStatus, createdAt
       FROM users WHERE id = ?
     `, result.lastInsertRowid);
     res.status(201).json({ message: 'Partner created', partner });
   } catch (err) {
     console.error('Partner create error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update a partner's commission rate after creation. The payout shown in the
+// partner portal is recomputed on the fly from this rate, so no back-fill is
+// needed — every attributed payment picks up the new rate.
+router.put('/partners/:id/commission', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const pct = Number(req.body.commissionPercent);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      return res.status(400).json({ error: 'Commission must be a percentage between 0 and 100' });
+    }
+
+    const partner = await db.get("SELECT id FROM users WHERE id = ? AND role = 'partner'", id);
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    await db.run('UPDATE users SET commissionPercent = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', pct, id);
+    res.json({ message: 'Commission updated', commissionPercent: pct });
+  } catch (err) {
+    console.error('Partner commission update error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Payout requests from partners — rendered in the Issues panel with a
+// priority tag. Pending requests sort first.
+router.get('/payout-requests', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const requests = await db.all(`
+      SELECT pr.id, pr.partnerId, pr.amount, pr.status, pr.priority, pr.note, pr.createdAt, pr.updatedAt,
+        u.firstName, u.lastName, u.email, u.partnerName, u.commissionPercent
+      FROM payout_requests pr
+      JOIN users u ON u.id = pr.partnerId
+      ORDER BY CASE pr.status WHEN 'pending' THEN 0 ELSE 1 END, pr.createdAt DESC, pr.id DESC
+      LIMIT 500
+    `);
+    res.json({ requests });
+  } catch (err) {
+    console.error('List payout requests error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Triage a payout request: change status (approve/reject/reopen) and/or the
+// priority tag the Issues panel shows.
+router.put('/payout-requests/:id', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { status, priority } = req.body;
+    if (status !== undefined && !['pending', 'approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    if (priority !== undefined && !['high', 'normal', 'low'].includes(priority)) {
+      return res.status(400).json({ error: 'Invalid priority' });
+    }
+    if (status === undefined && priority === undefined) {
+      return res.status(400).json({ error: 'Nothing to update' });
+    }
+
+    const existing = await db.get('SELECT id FROM payout_requests WHERE id = ?', id);
+    if (!existing) return res.status(404).json({ error: 'Payout request not found' });
+
+    await db.run(`
+      UPDATE payout_requests
+      SET status = COALESCE(?, status),
+          priority = COALESCE(?, priority),
+          updatedAt = to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+      WHERE id = ?
+    `, status ?? null, priority ?? null, id);
+    const request = await db.get('SELECT id, partnerId, amount, status, priority, note, createdAt, updatedAt FROM payout_requests WHERE id = ?', id);
+    res.json({ message: 'Payout request updated', request });
+  } catch (err) {
+    console.error('Update payout request error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

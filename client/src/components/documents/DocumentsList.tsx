@@ -55,7 +55,7 @@ export default function DocumentsList() {
   useEffect(() => { load(); }, []);
 
   const download = async (url: string, filename: string) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const finalName = studentName ? `${studentName} - ${filename}` : filename;
     try {
       const r = await fetch(url, {

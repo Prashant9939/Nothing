@@ -8,6 +8,10 @@ import NewPartnerModal from '../../components/admin/NewPartnerModal';
 
 const fmtMoney = (n: number) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
+// Commission payouts carry decimals (5% of ₹199 = ₹9.95) — show them exactly.
+const fmtCommission = (pct: number, amount: number) =>
+  `${Number(pct || 0)}% · ₹${Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const formatDate = (iso?: string | null) => {
   if (!iso) return '—';
   const d = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(iso)
@@ -65,6 +69,7 @@ export default function AdminPartners() {
   const totals = useMemo(() => ({
     students: partners.reduce((n, p) => n + p.students, 0),
     revenue: partners.reduce((n, p) => n + p.paidAmount, 0),
+    commission: partners.reduce((n, p) => n + Number(p.commissionAmount || 0), 0),
     pending: partners.reduce((n, p) => n + p.pendingAmount, 0),
     documents: partners.reduce((n, p) => n + p.documents, 0),
   }), [partners]);
@@ -81,6 +86,7 @@ export default function AdminPartners() {
     { label: 'Partners', value: partners.length },
     { label: 'Students Referred', value: totals.students },
     { label: 'Paid Revenue', value: fmtMoney(totals.revenue) },
+    { label: 'Commission Payout', value: fmtMoney(totals.commission) },
     { label: 'Pending Amount', value: fmtMoney(totals.pending) },
     { label: 'Documents', value: totals.documents },
   ];
@@ -101,7 +107,7 @@ export default function AdminPartners() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {stats.map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
             <div className="text-lg font-bold text-gray-900">{s.value}</div>
@@ -138,6 +144,7 @@ export default function AdminPartners() {
                   <th className="text-left p-4 font-medium text-gray-500">Students</th>
                   <th className="text-left p-4 font-medium text-gray-500">Registrations</th>
                   <th className="text-left p-4 font-medium text-gray-500">Paid</th>
+                  <th className="text-left p-4 font-medium text-gray-500">Commission</th>
                   <th className="text-left p-4 font-medium text-gray-500">Pending</th>
                   <th className="text-left p-4 font-medium text-gray-500">Documents</th>
                   <th className="text-left p-4 font-medium text-gray-500">Last Activity</th>
@@ -170,6 +177,9 @@ export default function AdminPartners() {
                     <td className="p-4 font-medium text-gray-900">{p.students}</td>
                     <td className="p-4 text-gray-600">{p.registrations}</td>
                     <td className="p-4 font-medium text-gray-900">{fmtMoney(p.paidAmount)}</td>
+                    <td className="p-4 font-medium text-orange-600">
+                      {p.commissionPercent > 0 ? fmtCommission(p.commissionPercent, p.commissionAmount) : '—'}
+                    </td>
                     <td className="p-4 text-gray-600">{fmtMoney(p.pendingAmount)}</td>
                     <td className="p-4 text-gray-600">{p.documents}</td>
                     <td className="p-4 text-xs text-gray-500">{formatDate(lastActivity(p))}</td>

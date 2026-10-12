@@ -29,6 +29,16 @@ export default function Navbar() {
 
   const isActive = (path: string) => location.pathname === path;
 
+  /* Paint blobs for the navbar logo's liquid reveal — coordinates live in a
+     -inset-5 box around the logo image. */
+  const NAV_BLOBS = [
+    { size: 16, left: 0, top: 44, from: '-28px', color: 'bg-orange-500', delay: 0 },
+    { size: 11, left: 16, top: 84, from: '-22px', color: 'bg-amber-400', delay: 0.09 },
+    { size: 15, left: 122, top: 34, from: '28px', color: 'bg-orange-500', delay: 0.05 },
+    { size: 10, left: 128, top: 80, from: '22px', color: 'bg-amber-400', delay: 0.14 },
+    { size: 13, left: 66, top: 58, from: '0px', color: 'bg-orange-500', delay: 0.22 },
+  ];
+
   const navLinks = [
     { path: '/', label: 'Home' },
     { path: '/programs', label: 'Programs' },
@@ -49,17 +59,86 @@ export default function Navbar() {
       }`}>
         <div className="px-3 sm:px-4 lg:px-6">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
+            {/* Logo — liquid reveal on load: blobs merge, logo streaks in
+                with smear ghosts, splash ring pops */}
             <Link to="/" className="flex items-center gap-2.5 group">
-              <img
-                src="/logo/logo-full.png"
-                alt="IQIntern"
-                width={512}
-                height={418}
-                fetchPriority="high"
-                decoding="async"
-                className="h-20 md:h-24 w-auto mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
-              />
+              <div className="relative">
+                <svg aria-hidden="true" className="absolute h-0 w-0">
+                  <defs>
+                    <filter id="iq-nav-goo" x="-50%" y="-50%" width="200%" height="200%">
+                      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+                      <feColorMatrix
+                        in="blur"
+                        mode="matrix"
+                        values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"
+                        result="goo"
+                      />
+                      <feBlend in="SourceGraphic" in2="goo" />
+                    </filter>
+                  </defs>
+                </svg>
+
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -inset-5"
+                  style={{ filter: 'url(#iq-nav-goo)' }}
+                >
+                  {NAV_BLOBS.map((b) => (
+                    <span
+                      key={`${b.left}-${b.top}`}
+                      className={`absolute opacity-0 animate-liquid-blob ${b.color}`}
+                      style={
+                        {
+                          width: b.size,
+                          height: b.size,
+                          left: b.left,
+                          top: b.top,
+                          borderRadius: '60% 40% 55% 45% / 50% 60% 40% 50%',
+                          animationDelay: `${b.delay}s`,
+                          '--bx': b.from,
+                        } as React.CSSProperties
+                      }
+                    />
+                  ))}
+                </div>
+
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 rounded-xl border-2 border-orange-400/70 opacity-0 animate-liquid-splat"
+                />
+
+                <div
+                  className="relative origin-left animate-logo-streak"
+                  style={{ '--streak-x': '-80px' } as React.CSSProperties}
+                >
+                  {[0.56, 0.64].map((delay) => (
+                    <div
+                      key={delay}
+                      aria-hidden="true"
+                      className="absolute inset-0 opacity-0 animate-logo-trail"
+                      style={{ animationDelay: `${delay}s`, '--streak-x': '-80px' } as React.CSSProperties}
+                    >
+                      <img
+                        src="/logo/logo-full.webp"
+                        alt=""
+                        width={512}
+                        height={418}
+                        decoding="async"
+                        className="h-20 md:h-24 w-auto mix-blend-multiply"
+                      />
+                    </div>
+                  ))}
+                  <img
+                    src="/logo/logo-full.webp"
+                    alt="IQIntern"
+                    width={512}
+                    height={418}
+                    fetchPriority="high"
+                    decoding="async"
+                    className="h-20 md:h-24 w-auto mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
+                  />
+                </div>
+              </div>
             </Link>
 
             {/* Desktop Nav */}

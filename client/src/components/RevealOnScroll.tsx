@@ -26,12 +26,23 @@ export default function RevealOnScroll() {
 
     let raf = 0;
     const onScroll = () => {
-      if (!raf && pending.size > 0) raf = requestAnimationFrame(sweep);
+      // Wrapped so rAF's timestamp never lands in sweep's `instant` param.
+      if (!raf && pending.size > 0) raf = requestAnimationFrame(() => sweep());
     };
 
-    const reveal = (el: HTMLElement) => {
+    const reveal = (el: HTMLElement, instant = false) => {
       pending.delete(el);
-      el.classList.add('animate-in');
+      if (instant) {
+        // Content already on screen at mount must not spend 0.7s fading in
+        // from opacity 0 — that transition counts against LCP for the hero
+        // (opacity-0 elements are not "visible"). Kill the transition for the
+        // flip, then restore it so hover transitions still animate later.
+        el.style.transition = 'none';
+        el.classList.add('animate-in');
+        requestAnimationFrame(() => { el.style.transition = ''; });
+      } else {
+        el.classList.add('animate-in');
+      }
       observer.unobserve(el);
       if (pending.size === 0) {
         if (raf) { cancelAnimationFrame(raf); raf = 0; }
@@ -49,7 +60,9 @@ export default function RevealOnScroll() {
     );
     pending.forEach((el) => observer.observe(el));
 
-    const sweep = () => {
+    // `instant` must ONLY come from the explicit initial call — never from
+    // rAF/IO arguments (rAF passes a timestamp, which would be truthy).
+    const sweep = (instant = false) => {
       raf = 0;
       // Read all rects first, then write classes — keeps layout thrash to one pass.
       const hits: HTMLElement[] = [];
@@ -57,10 +70,10 @@ export default function RevealOnScroll() {
         const rect = el.getBoundingClientRect();
         if (rect.top < window.innerHeight * 0.92 && rect.bottom > 0) hits.push(el);
       });
-      hits.forEach(reveal);
+      hits.forEach((el) => reveal(el, instant));
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    sweep();
+    sweep(true);
 
     return () => {
       window.removeEventListener('scroll', onScroll);

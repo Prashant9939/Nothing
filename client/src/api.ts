@@ -10,7 +10,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -21,8 +21,8 @@ api.interceptors.response.use(
     const url = error.config?.url || '';
     const isAuthAttempt = ['/auth/login', '/auth/register', '/auth/check', '/auth/logout'].some(p => url.includes(p));
     if (error.response?.status === 401 && !isAuthAttempt) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
       invalidateDashboard();
       // Let the SPA clear state and route to /login without re-downloading
       // the whole app (window.location was a multi-second white screen).
@@ -303,6 +303,11 @@ export const adminApi = {
     api.put<{ message: string }>(`/admin/partners/${id}/status`, { status }),
   createPartner: (data: CreatePartnerData) =>
     api.post<{ message: string; partner: PartnerListItem }>('/admin/partners', data),
+  updatePartnerCommission: (id: number, commissionPercent: number) =>
+    api.put<{ message: string; commissionPercent: number }>(`/admin/partners/${id}/commission`, { commissionPercent }),
+  getPayoutRequests: () => api.get<{ requests: PayoutRequest[] }>('/admin/payout-requests'),
+  updatePayoutRequest: (id: number, data: { status?: PayoutRequest['status']; priority?: PayoutRequest['priority'] }) =>
+    api.put<{ message: string; request: PayoutRequest }>(`/admin/payout-requests/${id}`, data),
   deletePartner: (id: number) => api.delete<{ message: string }>(`/admin/partners/${id}`),
 };
 
@@ -313,6 +318,7 @@ export interface CreatePartnerData {
   phone: string;
   partnerName: string;
   password: string;
+  commissionPercent?: number;
 }
 
 // Partner program -------------------------------------------------------
@@ -323,6 +329,8 @@ export interface PartnerListItem {
   email: string;
   phone: string;
   partnerName: string;
+  commissionPercent: number;
+  commissionAmount: number;
   accountStatus: 'active' | 'suspended';
   createdAt: string;
   registrations: number;
@@ -409,6 +417,7 @@ export interface PartnerDetail {
     email: string;
     phone: string;
     partnerName: string;
+    commissionPercent: number;
     accountStatus: 'active' | 'suspended';
     createdAt: string;
   };
@@ -419,6 +428,8 @@ export interface PartnerDetail {
     paidCount: number;
     paidAmount: number;
     pendingAmount: number;
+    commissionPercent: number;
+    commissionAmount: number;
     certificates: number;
     documents: number;
     logins: number;
@@ -428,6 +439,35 @@ export interface PartnerDetail {
   payments: PartnerPaymentRow[];
   documents: PartnerDocumentRow[];
   activity: PartnerActivityItem[];
+}
+
+// A partner's request to cash out earned commission — admin triages these
+// from the Issues panel with a priority tag.
+export interface PayoutRequest {
+  id: number;
+  partnerId: number;
+  amount: number;
+  status: 'pending' | 'approved' | 'rejected';
+  priority: 'high' | 'normal' | 'low';
+  note: string;
+  createdAt: string;
+  updatedAt: string | null;
+  // Joined partner profile (admin list only)
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  partnerName?: string;
+  commissionPercent?: number;
+}
+
+// Commission + payout-request summary shown in the partner's quick action.
+export interface CommissionSummary {
+  commissionPercent: number;
+  paidAmount: number;
+  earned: number;
+  requested: number;
+  available: number;
+  requests: PayoutRequest[];
 }
 
 // Partner's own dashboard (role=partner) — same payload admin detail returns.
@@ -453,6 +493,9 @@ export interface RegisterStudentData {
 
 export const partnerApi = {
   getDashboard: () => api.get<PartnerDetail>('/partner/dashboard'),
+  getCommission: () => api.get<CommissionSummary>('/partner/commission'),
+  requestPayout: (amount: number, note?: string) =>
+    api.post<{ message: string; request: PayoutRequest; available: number }>('/partner/payout-request', { amount, note }),
   registerStudent: (data: RegisterStudentData) =>
     api.post<{ message: string; user: { id: number; firstName: string; lastName: string; email: string } }>(
       '/partner/students', data
@@ -596,16 +639,38 @@ export interface AnalyticsResponse {
   topPages: TopPage[];
 }
 
-// Announcements API (admin publishes, logged-in users read via the bell)
+// Announcements API (admin publishes, logged-in users read via the bell).
+// The bell and the student Dashboard both fetch the list on the same
+// navigation — a short TTL with single-flight dedupes the pair (this exact
+// double-fetch was observed on every student dashboard load). Every mutation
+// invalidates immediately so unread badges stay truthful.
+const ANNOUNCE_TTL_MS = 15000;
+type AnnListResponse = { announcements: Announcement[]; unread: number };
+let annCache: { at: number; response: AxiosResponse<AnnListResponse> } | null = null;
+let annPending: Promise<AxiosResponse<AnnListResponse>> | null = null;
+const invalidateAnnouncements = () => { annCache = null; };
+const afterMutate = <T>(p: Promise<AxiosResponse<T>>): Promise<AxiosResponse<T>> =>
+  p.then((res) => { invalidateAnnouncements(); return res; });
+
 export const announcementApi = {
-  list: () => api.get<{ announcements: Announcement[]; unread: number }>('/announcements'),
+  list: (): Promise<AxiosResponse<AnnListResponse>> => {
+    if (annCache && Date.now() - annCache.at < ANNOUNCE_TTL_MS) return Promise.resolve(annCache.response);
+    if (annPending) return annPending;
+    annPending = api.get<AnnListResponse>('/announcements')
+      .then((res) => {
+        annCache = { at: Date.now(), response: res };
+        return res;
+      })
+      .finally(() => { annPending = null; });
+    return annPending;
+  },
   create: (data: { title: string; message: string }) =>
-    api.post<{ message: string; announcement: Announcement }>('/announcements', data),
+    afterMutate(api.post<{ message: string; announcement: Announcement }>('/announcements', data)),
   update: (id: number, data: { title: string; message: string }) =>
-    api.put<{ message: string; announcement: Announcement }>(`/announcements/${id}`, data),
-  remove: (id: number) => api.delete<{ message: string }>(`/announcements/${id}`),
-  markRead: (id: number) => api.post<{ message: string }>(`/announcements/${id}/read`),
-  markAllRead: () => api.post<{ message: string }>('/announcements/read-all'),
+    afterMutate(api.put<{ message: string; announcement: Announcement }>(`/announcements/${id}`, data)),
+  remove: (id: number) => afterMutate(api.delete<{ message: string }>(`/announcements/${id}`)),
+  markRead: (id: number) => afterMutate(api.post<{ message: string }>(`/announcements/${id}/read`)),
+  markAllRead: () => afterMutate(api.post<{ message: string }>('/announcements/read-all')),
 };
 
 export default api;

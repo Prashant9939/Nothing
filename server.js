@@ -112,12 +112,16 @@ app.use(compression({
   },
 }));
 // The database (schema + seeds) and brand settings must be ready before any
-// request is served. On Vercel the function starts handling requests as soon
-// as it is required. The gate is retriable: a transient DB failure (e.g. a
+// API request is served. On Vercel the function starts handling requests as
+// soon as it is required. The gate is retriable: a transient DB failure (e.g. a
 // dropped TLS handshake to the pooler during a cold start) must not poison
 // this instance for its whole lifetime — after a failure the next request
 // starts a fresh attempt, and up to 3 tries (with backoff) are made per
 // request before the real error is surfaced.
+//
+// Mounted ONLY under /api: the SPA shell, static assets and /api/health must
+// keep answering while the database is down — otherwise a DB outage turns
+// into a full site outage and Render's health checks restart-loop the box.
 let appReady = null;
 const ensureReady = () => {
   if (!appReady) {
@@ -140,7 +144,12 @@ const ensureReady = () => {
   }
   return appReady;
 };
-app.use((req, res, next) => ensureReady().then(() => next()).catch(next));
+app.use('/api', (req, res, next) => {
+  // Health probes answer immediately, even mid-init / during an outage —
+  // they exist precisely to observe it.
+  if (req.path === '/health') return next();
+  ensureReady().then(() => next()).catch(next);
+});
 
 // Razorpay webhook must run before express.json() — its signature is computed
 // over the raw request body.
@@ -157,6 +166,10 @@ app.use(express.static(path.join(__dirname, 'client', 'dist'), {
   setHeaders: (res, filePath) => {
     if (filePath.includes(`${path.sep}assets${path.sep}`)) {
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (filePath.endsWith('sw.js')) {
+      // Heuristic caching of the service worker delays updates up to 24h —
+      // always revalidate so a deploy's new SW is picked up promptly.
+      res.setHeader('Cache-Control', 'no-cache');
     } else if (filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-cache');
     }

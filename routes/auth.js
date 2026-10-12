@@ -38,9 +38,14 @@ const contactLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Timing equalizer for the "no such user" path — computed lazily as a promise
-// so module load never blocks the event loop on a bcrypt hash.
-const DUMMY_HASH = bcrypt.hash('iqi-timing-equalizer', BCRYPT_COST);
+// Timing equalizer for the "no such user" path. Created lazily on first use
+// (and memoized): hashing at module load would burn ~100ms of CPU right in
+// the cold-start window, before the first request is even parsed.
+let dummyHashPromise = null;
+const getDummyHash = () => {
+  if (!dummyHashPromise) dummyHashPromise = bcrypt.hash('iqi-timing-equalizer', BCRYPT_COST);
+  return dummyHashPromise;
+};
 
 const signToken = (user) => {
   return jwt.sign(
@@ -142,20 +147,30 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // The identifier may be an email, phone number, registration number or roll number
+    // The identifier may be an email, phone number, registration number or roll number.
+    // One round trip for all four probes instead of up to three sequential
+    // SELECTs (each was a full RTT to the remote pooler before bcrypt ran).
+    // The ORDER BY preserves the old fallback priority: email beats phone
+    // beats regNo/rollNo when a value happens to match more than one column.
     const raw = String(email).trim();
     const id = raw.toLowerCase();
     const compact = raw.replace(/[\s-]/g, '');
 
-    let user = await db.get('SELECT * FROM users WHERE lower(email) = ?', id);
+    const user = await db.get(`
+      SELECT * FROM users
+      WHERE lower(email) = ?
+         OR phone = ? OR replace(replace(phone, ' ', ''), '-', '') = ?
+         OR lower(trim(regNo)) = ? OR lower(trim(rollNo)) = ?
+      ORDER BY CASE
+        WHEN lower(email) = ? THEN 0
+        WHEN phone = ? OR replace(replace(phone, ' ', ''), '-', '') = ? THEN 1
+        ELSE 2
+      END
+      LIMIT 1
+    `, id, raw, compact, id, id, id, raw, compact);
+
     if (!user) {
-      user = await db.get("SELECT * FROM users WHERE phone = ? OR replace(replace(phone, ' ', ''), '-', '') = ?", raw, compact);
-    }
-    if (!user) {
-      user = await db.get('SELECT * FROM users WHERE lower(trim(regNo)) = ? OR lower(trim(rollNo)) = ?', id, id);
-    }
-    if (!user) {
-      await bcrypt.compare(password, await DUMMY_HASH);
+      await bcrypt.compare(password, await getDummyHash());
       return res.status(401).json({ error: 'Invalid login details. Check your email or phone and password and try again.' });
     }
 
@@ -363,6 +378,9 @@ router.post('/contact', contactLimiter, async (req, res) => {
 
 // ===================== PUBLIC INTERNSHIPS =====================
 router.get('/internships', async (req, res) => {
+  // Public, read-only and only changed by admin CRUD — a short shared cache
+  // keeps registration/page loads off the database entirely for repeat hits.
+  res.set('Cache-Control', 'public, max-age=300');
   const internships = await db.all('SELECT id, title, description, category, duration, price, originalPrice, modules, topics, isActive, examDate, createdAt FROM internships WHERE isActive = 1 ORDER BY createdAt DESC');
   res.json({ internships });
 });

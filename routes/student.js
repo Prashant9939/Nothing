@@ -2,7 +2,6 @@ const express = require('express');
 const db = require('../db');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const PDFDocument = require('pdfkit');
 const { authenticateToken } = require('../middleware/auth');
 const { passwordPolicyError, BCRYPT_COST } = require('../lib/passwordPolicy');
 const { newReceiptNumber } = require('../lib/docNumbers');
@@ -130,8 +129,16 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       ORDER BY p.createdAt DESC
     `, req.user.id),
 
+    // Explicit column list: e.* would drag `answers` + `servedQuestionIds`
+    // (tens of KB of JSON per attempt) into EVERY dashboard response — the
+    // payload grew linearly with the student's attempt count for data no
+    // screen renders. The admin list drops the same two blobs for the same
+    // reason (routes/admin.js exam list).
     db.all(`
-      SELECT e.*, i.title as internshipTitle, en.progress as courseProgress, en.status as enrollmentStatus,
+      SELECT e.id, e.userId, e.internshipId, e.enrollmentId, e.totalQuestions,
+        e.passingMarks, e.duration, e.scheduledAt, e.startedAt, e.completedAt,
+        e.score, e.status,
+        i.title as internshipTitle, en.progress as courseProgress, en.status as enrollmentStatus,
         (SELECT COUNT(*) FROM learning_modules lm WHERE lm.internshipId = i.id) as moduleCount
       FROM exams e
       JOIN internships i ON e.internshipId = i.id
@@ -314,19 +321,22 @@ router.post('/uncomplete-module/:enrollmentId', authenticateToken, async (req, r
 
 // ===================== AVAILABLE INTERNSHIPS =====================
 router.get('/internships', authenticateToken, async (req, res) => {
-  const internships = await db.all('SELECT * FROM internships WHERE isActive = 1 ORDER BY createdAt DESC');
+  // The two reads are independent — fetch them together (2 RTTs → 1 wave).
+  const [internships, enrolled] = await Promise.all([
+    db.all('SELECT * FROM internships WHERE isActive = 1 ORDER BY createdAt DESC'),
 
-  // Check which tracks are actually paid for: a refunded payment leaves the
-  // enrollment row behind (for history/repurchase) but must not read as
-  // "enrolled" anywhere, or the student can never buy the track again.
-  const enrolled = await db.all(`
-    SELECT DISTINCT e.internshipId
-    FROM enrollments e
-    WHERE e.userId = ?
-      AND EXISTS (
-        SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed'
-      )
-  `, req.user.id);
+    // Check which tracks are actually paid for: a refunded payment leaves the
+    // enrollment row behind (for history/repurchase) but must not read as
+    // "enrolled" anywhere, or the student can never buy the track again.
+    db.all(`
+      SELECT DISTINCT e.internshipId
+      FROM enrollments e
+      WHERE e.userId = ?
+        AND EXISTS (
+          SELECT 1 FROM payments p WHERE p.enrollmentId = e.id AND p.status = 'completed'
+        )
+    `, req.user.id),
+  ]);
   const enrolledIds = enrolled.map(e => e.internshipId);
 
   const internshipsWithStatus = internships.map(i => ({
@@ -768,14 +778,15 @@ router.get('/learning-progress/:internshipId', authenticateToken, async (req, re
     return res.status(403).json({ error: PAYMENT_REQUIRED_MSG });
   }
 
-  const modules = await db.all(`
-    SELECT id FROM learning_modules WHERE internshipId = ?
-  `, internshipId);
-  
-  const enrollment = await db.get(`
-    SELECT completedModules FROM enrollments
-    WHERE userId = ? AND internshipId = ?
-  `, req.user.id, internshipId);
+  const [modules, enrollment] = await Promise.all([
+    db.all(`
+      SELECT id FROM learning_modules WHERE internshipId = ?
+    `, internshipId),
+    db.get(`
+      SELECT completedModules FROM enrollments
+      WHERE userId = ? AND internshipId = ?
+    `, req.user.id, internshipId),
+  ]);
   
   let completed = [];
   if (enrollment) {

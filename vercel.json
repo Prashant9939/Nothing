@@ -5,8 +5,9 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 60,
+      "memory": 1024,
       "regions": ["sin1"],
-      "includeFiles": "{node_modules/pdfkit/js/standard-fonts/**,node_modules/pdfkit/js/data/**,client/public/logo/**,client/src/assets/Legeal/**}"
+      "includeFiles": "{node_modules/pdfkit/js/standard-fonts/**,node_modules/pdfkit/js/data/**,client/public/logo/**,server/assets/**}"
     }
   },
   "rewrites": [
@@ -15,6 +16,12 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    },
     {
       "source": "/assets/:path*",
       "headers": [

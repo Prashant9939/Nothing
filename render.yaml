@@ -6,9 +6,12 @@ services:
     name: iqintern
     runtime: node
     plan: free
-    buildCommand: npm install && cd client && npm install && npm run build
+    buildCommand: npm ci && cd client && npm ci && npm run build
     startCommand: node server.js
-    healthCheckPath: /api/auth/internships
+    # /api/health answers without touching the database (unlike the old
+    # DB-backed /api/auth/internships probe, which restart-looped the box
+    # during every database blip).
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: "22"

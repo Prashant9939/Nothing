@@ -6,6 +6,7 @@ import { biharUniversities } from '../data/biharUniversities';
 import { institutionApi } from '../api';
 import SearchableSelect from '../components/SearchableSelect';
 import AuthSplit from '../components/AuthSplit';
+import LiquidLogo from '../components/LiquidLogo';
 import PasswordHints from '../components/ui/PasswordHints';
 import { passwordChecks, passwordPolicyError } from '../passwordPolicy';
 import { CheckIcon } from "@animateicons/react/lucide";
@@ -113,11 +114,7 @@ export default function Register() {
 
   return (
     <AuthSplit wide>
-      <Link to="/" className="inline-flex items-center gap-2.5 mb-4 self-start">
-        <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/25 ring-1 ring-orange-100 hover:scale-105 transition-all duration-300">
-          <img src="/logo/logo-iq.png" alt="IQIntern" className="h-7 w-7 object-contain" />
-        </div>
-      </Link>
+      <LiquidLogo className="self-start" />
 
       <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Create your account</h1>
 

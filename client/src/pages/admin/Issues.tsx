@@ -1,8 +1,23 @@
 import { useEffect, useState } from 'react';
 import { adminApi } from '../../api';
-import type { ContactMessage } from '../../api';
+import type { ContactMessage, PayoutRequest } from '../../api';
 import { usePopup } from '../../context/PopupContext';
 import { InboxIcon, RefreshCwIcon, MailIcon, PhoneIcon, ReplyIcon, TrashIcon } from '@animateicons/react/lucide';
+
+const fmtMoney = (n: number) =>
+  `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const payoutStatusBadge: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-700 border-amber-200',
+  approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  rejected: 'bg-red-100 text-red-700 border-red-200',
+};
+
+const priorityTag: Record<string, string> = {
+  high: 'bg-red-100 text-red-700 border-red-200',
+  normal: 'bg-blue-100 text-blue-700 border-blue-200',
+  low: 'bg-slate-100 text-slate-600 border-slate-200',
+};
 
 const formatDate = (iso: string) => {
   const d = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(iso)
@@ -31,15 +46,20 @@ export default function AdminIssues() {
   const popup = usePopup();
   const [messages, setMessages] = useState<ContactMessage[]>([]);
   const [unread, setUnread] = useState(0);
+  const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'new'>('all');
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const load = async () => {
     try {
-      const res = await adminApi.getContactMessages();
-      setMessages(res.data.messages);
-      setUnread(res.data.unread);
+      const [msgs, reqs] = await Promise.all([
+        adminApi.getContactMessages(),
+        adminApi.getPayoutRequests(),
+      ]);
+      setMessages(msgs.data.messages);
+      setUnread(msgs.data.unread);
+      setPayouts(reqs.data.requests);
     } catch {
       popup.error('Could not load messages. Please try again.', 'Load Failed');
     } finally {
@@ -82,6 +102,20 @@ export default function AdminIssues() {
     }
   };
 
+  const pendingPayouts = payouts.filter((r) => r.status === 'pending').length;
+
+  const updatePayout = async (id: number, patch: { status?: PayoutRequest['status']; priority?: PayoutRequest['priority'] }) => {
+    setBusyId(id);
+    try {
+      const res = await adminApi.updatePayoutRequest(id, patch);
+      setPayouts((prev) => prev.map((r) => (r.id === id ? { ...r, ...res.data.request } : r)));
+    } catch (err: any) {
+      popup.error(err.response?.data?.error || 'Could not update the payout request.', 'Update Failed');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-[60vh]"><div className="w-8 h-8 border-2 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>;
 
   const visible = filter === 'new' ? messages.filter((m) => m.status === 'new') : messages;
@@ -118,6 +152,88 @@ export default function AdminIssues() {
             {label}
           </button>
         ))}
+      </div>
+
+      {/* Payout requests — partners asking for a commission cash-out */}
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">Payout Requests</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Partners requesting a payout of their earned commission
+              {pendingPayouts > 0 && <span className="text-amber-600 font-medium"> · {pendingPayouts} pending</span>}
+            </p>
+          </div>
+        </div>
+        {payouts.length === 0 ? (
+          <div className="p-10 text-center text-sm text-gray-400">No payout requests yet.</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {payouts.map((r) => (
+              <div key={r.id} className={`p-5 flex flex-wrap items-start justify-between gap-3 ${r.status === 'pending' ? 'bg-amber-50/40' : ''}`}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-gray-900">
+                      {r.partnerName || `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.email}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-slate-50 text-slate-600 border-slate-200">
+                      {Number(r.commissionPercent || 0)}% commission
+                    </span>
+                    <select
+                      value={r.priority}
+                      onChange={(e) => updatePayout(r.id, { priority: e.target.value as PayoutRequest['priority'] })}
+                      disabled={busyId === r.id}
+                      title="Set priority"
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full border font-semibold uppercase tracking-wide cursor-pointer focus:outline-none ${priorityTag[r.priority] || priorityTag.normal}`}
+                    >
+                      <option value="high">High</option>
+                      <option value="normal">Normal</option>
+                      <option value="low">Low</option>
+                    </select>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-semibold uppercase tracking-wide ${payoutStatusBadge[r.status] || ''}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 mt-1 flex-wrap">
+                    <span className="text-xs text-gray-500">{r.email}</span>
+                    <span className="text-xs text-gray-500">{formatDate(r.createdAt)}</span>
+                  </div>
+                  {r.note && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-line">{r.note}</p>}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-base font-bold text-gray-900 mr-1">{fmtMoney(r.amount)}</span>
+                  {r.status === 'pending' ? (
+                    <>
+                      <button
+                        onClick={() => updatePayout(r.id, { status: 'approved' })}
+                        disabled={busyId === r.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-colors disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => updatePayout(r.id, { status: 'rejected' })}
+                        disabled={busyId === r.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 shadow-sm transition-colors disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => updatePayout(r.id, { status: 'pending' })}
+                      disabled={busyId === r.id}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      Reopen
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* List */}

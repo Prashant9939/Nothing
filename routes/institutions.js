@@ -11,25 +11,25 @@ const adminOnly = async (req, res, next) => {
   next();
 };
 
-const getUniversities = async () => await db.all(`
-  SELECT id, name, shortName, location, type, createdAt
-  FROM universities ORDER BY LOWER(name) ASC
-`);
-
-const getColleges = async () => await db.all(`
-  SELECT id, universityId, name, district, createdAt
-  FROM colleges ORDER BY LOWER(name) ASC
-`);
-
-// Public: registration + profile screens need this before/without login
+// Public: registration + profile screens need this before/without login.
+// One round trip (LEFT JOIN LATERAL-style json_agg) instead of two full-table
+// SELECTs + O(universities × colleges) grouping in JS, plus a short shared
+// cache: the data only changes through the admin CRUD below.
 router.get('/', async (req, res) => {
-  const universities = await getUniversities();
-  const colleges = await getColleges();
-  const grouped = universities.map((u) => ({
-    ...u,
-    colleges: colleges.filter((c) => c.universityId === u.id),
-  }));
-  res.json({ universities: grouped });
+  res.set('Cache-Control', 'public, max-age=300');
+  const universities = await db.all(`
+    SELECT u.id, u.name, u.shortName, u.location, u.type, u.createdAt,
+      COALESCE((
+        SELECT json_agg(
+          json_build_object('id', c.id, 'universityId', c.universityId, 'name', c.name, 'district', c.district, 'createdAt', c.createdAt)
+          ORDER BY LOWER(c.name) ASC
+        )
+        FROM colleges c WHERE c.universityId = u.id
+      ), '[]'::json) AS colleges
+    FROM universities u
+    ORDER BY LOWER(u.name) ASC
+  `);
+  res.json({ universities });
 });
 
 // ===================== ADMIN: UNIVERSITIES =====================

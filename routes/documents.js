@@ -2,8 +2,9 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const db = require('../db');
-const PDFDocument = require('pdfkit');
-const QRCode = require('qrcode');
+// pdfkit + qrcode are required INSIDE the render helpers below, not here:
+// together they are a large parse+init cost that used to run during server
+// boot (cold start) even though PDFs are only built on download requests.
 const { ensureEnrollmentNumber } = require('../lib/docNumbers');
 const {
   companyName,
@@ -74,8 +75,9 @@ const LOGO_FILE = path.join(__dirname, '..', 'client', 'public', 'logo', 'logo-f
 // Cropped "IQ" mark from logo-full.png (wordmark erased) for the certificate
 // medallion. Regenerate with a crop script if logo-full.png ever changes.
 const LOGO_IQ_FILE = path.join(__dirname, '..', 'client', 'public', 'logo', 'logo-iq.png');
-// Scanned signature (supervisor / signatory) from client/src/assets/Legeal.
-const SIGN_FILE = path.join(__dirname, '..', 'client', 'src', 'assets', 'Legeal', 'sign.png');
+// Scanned signature (supervisor / signatory) — server asset (was an
+// unoptimized 495KB PNG under client/src; now 19KB at 512px wide).
+const SIGN_FILE = path.join(__dirname, '..', 'server', 'assets', 'sign.png');
 
 let LOGO_SIZE = { width: 2274, height: 1856 };
 try {
@@ -157,6 +159,7 @@ const VERIFY_BASE = (process.env.SITE_URL || `http://localhost:${process.env.POR
 // Builds the QR pointing at the public verification page for a document reference
 async function makeQr(ref) {
   try {
+    const QRCode = require('qrcode');
     const base = (siteUrl() || VERIFY_BASE).replace(/\/+$/, '');
     return await QRCode.toBuffer(`${base}/certification?id=${encodeURIComponent(ref)}`, {
       margin: 1, width: 280, color: { dark: '#1C6954', light: '#FFFFFF' },
@@ -263,6 +266,7 @@ function drawPageBackground(doc, watermark = 'IQINTERN') {
 }
 
 function startPdf(res, filename, opts = {}) {
+  const PDFDocument = require('pdfkit');
   const doc = new PDFDocument({ size: 'A4', margin: 50, ...opts });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
@@ -1147,7 +1151,7 @@ function buildLogBook(doc, d) {
     doc.lineWidth(0.8).strokeColor('#9CA3AF').moveTo(c.x, sigY).lineTo(c.x + c.w, sigY).stroke();
     doc.font('Helvetica-Bold').fontSize(8).fillColor(GREEN.dark).text(c.label, c.x, sigY + 5, { width: c.w });
   });
-  // Supervisor's signature sits on the line (image from assets/Legeal)
+  // Supervisor's signature sits on the line (server/assets/sign.png)
   drawSignature(doc, 422.5 - 35, sigY - 4, 70);
 
   // Footers with page numbers on every page
@@ -1306,8 +1310,11 @@ router.get('/download/marksheet/:enrollmentId', authenticateToken, async (req, r
     return res.status(403).json({ error: 'Pass the exam to download the marksheet.' });
   }
 
-  const cert = await db.get('SELECT * FROM certificates WHERE enrollmentId = ?', enrollment.id);
-  const exam = await db.get('SELECT * FROM exams WHERE enrollmentId = ? ORDER BY id DESC LIMIT 1', enrollment.id);
+  // cert feeds `ref` (below), exam is independent — fetch them together.
+  const [cert, exam] = await Promise.all([
+    db.get('SELECT * FROM certificates WHERE enrollmentId = ?', enrollment.id),
+    db.get('SELECT * FROM exams WHERE enrollmentId = ? ORDER BY id DESC LIMIT 1', enrollment.id),
+  ]);
   const ref = cert ? cert.certificateId : await ensureEnrollmentNumber(db, enrollment, 'reportNo');
   const qrBuffer = await makeQr(ref);
 

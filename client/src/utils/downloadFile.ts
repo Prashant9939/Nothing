@@ -3,7 +3,7 @@
 // fail on timeout instead of spinning forever, revoke the object URL later
 // so the browser can finish reading it.
 export async function downloadFile(url: string, filename: string): Promise<void> {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   try {
     const r = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },

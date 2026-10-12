@@ -14,15 +14,106 @@ const partnerOnly = (req, res, next) => {
   next();
 };
 
+const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+
+// Commission + payout-request summary for the partner's "Commission &
+// Payout" quick action. Earned = rate% of every completed attributed payment;
+// available = earned minus amounts already locked by pending/approved
+// requests (rejected requests do not deduct).
+async function getCommissionSummary(partnerId) {
+  const partner = await db.get(
+    "SELECT commissionPercent FROM users WHERE id = ? AND role = 'partner'", partnerId
+  );
+  const commissionPercent = Number(partner?.commissionPercent || 0);
+  const paid = await db.get(`
+    SELECT COALESCE(SUM(p.amount), 0) AS paid
+    FROM payments p
+    JOIN enrollments e ON e.id = p.enrollmentId
+    WHERE e.partnerId = ? AND p.status = 'completed'
+  `, partnerId);
+  const requests = await db.all(`
+    SELECT id, amount, status, priority, note, createdAt, updatedAt
+    FROM payout_requests
+    WHERE partnerId = ?
+    ORDER BY createdAt DESC, id DESC
+    LIMIT 50
+  `, partnerId);
+  const earned = round2(Number(paid.paid || 0) * commissionPercent / 100);
+  const requested = round2(
+    requests
+      .filter((r) => r.status === 'pending' || r.status === 'approved')
+      .reduce((sum, r) => sum + Number(r.amount || 0), 0)
+  );
+  return {
+    commissionPercent,
+    paidAmount: Number(paid.paid || 0),
+    earned,
+    requested,
+    available: round2(Math.max(0, earned - requested)),
+    requests,
+  };
+}
+
 // The partner's own dashboard — same payload the admin sees on the partner
 // detail screen, scoped to the logged-in partner.
 router.get('/dashboard', authenticateToken, partnerOnly, async (req, res) => {
   try {
     const detail = await getPartnerDetail(req.user.id);
     if (!detail) return res.status(404).json({ error: 'Partner account not found' });
-    res.json(detail);
+    // Commission terms and payout are admin-only — strip them from the
+    // partner's own payload (clone first: kpis is a shared cache entry).
+    const partnerKpis = { ...detail.kpis };
+    delete partnerKpis.commissionPercent;
+    delete partnerKpis.commissionAmount;
+    res.json({ ...detail, kpis: partnerKpis });
   } catch (err) {
     console.error('Partner dashboard error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Commission summary + payout-request history for the quick action.
+router.get('/commission', authenticateToken, partnerOnly, async (req, res) => {
+  try {
+    res.json(await getCommissionSummary(req.user.id));
+  } catch (err) {
+    console.error('Partner commission error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Request a payout of the partner's earned commission. The request lands in
+// the admin's Issues panel with a priority tag for triage.
+router.post('/payout-request', authenticateToken, partnerOnly, async (req, res) => {
+  try {
+    const amount = round2(req.body.amount);
+    const note = String(req.body.note || '').slice(0, 500);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Enter a valid payout amount' });
+    }
+
+    const summary = await getCommissionSummary(req.user.id);
+    if (amount > summary.available) {
+      return res.status(400).json({
+        error: `Payout request cannot exceed your available commission of ₹${summary.available.toLocaleString('en-IN')}`,
+      });
+    }
+
+    const result = await db.run(
+      'INSERT INTO payout_requests (partnerId, amount, note) VALUES (?, ?, ?)',
+      req.user.id, amount, note
+    );
+    const request = await db.get(
+      'SELECT id, amount, status, priority, note, createdAt FROM payout_requests WHERE id = ?',
+      result.lastInsertRowid
+    );
+    res.status(201).json({
+      message: 'Payout request submitted — the admin will review it shortly',
+      request,
+      available: round2(summary.available - amount),
+    });
+  } catch (err) {
+    console.error('Payout request error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

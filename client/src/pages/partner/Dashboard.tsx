@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { UserPlusIcon, UsersIcon, FileTextIcon, CreditCardIcon } from '@animateicons/react/lucide';
+import { UserPlusIcon, UsersIcon, FileTextIcon, CreditCardIcon, WalletIcon } from '@animateicons/react/lucide';
 import { partnerApi } from '../../api';
 import type { PartnerDetail, PartnerStudentRow } from '../../api';
 import RegisterStudentModal from '../../components/partner/RegisterStudentModal';
 import StudentDetailModal from '../../components/partner/StudentDetailModal';
+import CommissionModal from '../../components/partner/CommissionModal';
 
 const formatDate = (iso?: string | null) => {
   if (!iso) return '—';
@@ -29,6 +30,7 @@ export default function PartnerDashboard() {
   const [detail, setDetail] = useState<PartnerDetail | null>(null);
   const [error, setError] = useState('');
   const [showRegister, setShowRegister] = useState(false);
+  const [showCommission, setShowCommission] = useState(false);
   const [selected, setSelected] = useState<PartnerStudentRow | null>(null);
 
   const load = useCallback(() => {
@@ -78,7 +80,6 @@ export default function PartnerDashboard() {
   const stats = [
     { label: 'Students', value: kpis.students, sub: `${activeStudentCount} active` },
     { label: 'Registrations', value: kpis.registrations, sub: 'referred enrollments' },
-    { label: 'Paid Revenue', value: fmtMoney(kpis.paidAmount), sub: `${kpis.paidCount} payments` },
     { label: 'Pending Amount', value: fmtMoney(kpis.pendingAmount), sub: 'awaiting payment' },
     { label: 'Documents', value: kpis.documents, sub: `${kpis.certificates} certificates` },
     { label: 'Partner Sign-ins', value: kpis.logins, sub: kpis.lastLogin ? `last: ${formatDate(kpis.lastLogin)}` : 'no sign-ins yet' },
@@ -125,7 +126,7 @@ export default function PartnerDashboard() {
       </div>
 
       {/* KPI tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {stats.map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all duration-300">
             <div className="text-lg font-bold text-gray-900">{s.value}</div>
@@ -238,6 +239,18 @@ export default function PartnerDashboard() {
                   <p className="text-xs text-gray-500">Track paid, pending and refunded amounts</p>
                 </div>
               </Link>
+              <button
+                onClick={() => setShowCommission(true)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 bg-white text-left hover:border-orange-300 hover:bg-orange-50 transition-all"
+              >
+                <div className="w-9 h-9 bg-amber-50 border border-amber-100 rounded-xl flex items-center justify-center shrink-0">
+                  <WalletIcon size={15} className="text-amber-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Commission & Payout</p>
+                  <p className="text-xs text-gray-500">Check your commission and request a payout</p>
+                </div>
+              </button>
             </div>
           </div>
 
@@ -276,6 +289,7 @@ export default function PartnerDashboard() {
         onClose={() => setShowRegister(false)}
         onCreated={load}
       />
+      <CommissionModal open={showCommission} onClose={() => setShowCommission(false)} />
       {selected && (
         <StudentDetailModal
           student={selected}

@@ -101,10 +101,24 @@ export default function PartnerOverview({ data, showActivity = true }: Props) {
       .map((s) => s.studentId)
   ).size;
 
+  // Commission payout (admin-set rate on the partner account). When no rate is
+  // configured the payout UI stays hidden entirely.
+  const commissionPct = Number(kpis.commissionPercent || 0);
+  const hasCommission = commissionPct > 0;
+  // Payouts can be fractional paise values (5% of ₹199 = ₹9.95) — show them
+  // with decimals, unlike the whole-rupee revenue tiles.
+  const fmtCommission = (n: number) =>
+    `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const commissionOn = (amount: number | null) =>
+    fmtCommission(Math.round(Number(amount || 0) * commissionPct) / 100);
+
   const stats = [
     { label: 'Students', value: kpis.students, sub: `${activeStudentCount} active` },
     { label: 'Registrations', value: kpis.registrations, sub: 'referred enrollments' },
     { label: 'Paid Revenue', value: fmtMoney(kpis.paidAmount), sub: `${kpis.paidCount} payments` },
+    ...(hasCommission
+      ? [{ label: `Commission ${commissionPct}%`, value: fmtCommission(kpis.commissionAmount), sub: 'total payout earned' }]
+      : []),
     { label: 'Pending Amount', value: fmtMoney(kpis.pendingAmount), sub: 'awaiting payment' },
     { label: 'Documents', value: kpis.documents, sub: `${kpis.certificates} certificates` },
     { label: 'Partner Sign-ins', value: kpis.logins, sub: kpis.lastLogin ? `last: ${formatDate(kpis.lastLogin)}` : 'no sign-ins yet' },
@@ -140,7 +154,7 @@ export default function PartnerOverview({ data, showActivity = true }: Props) {
   return (
     <div className="space-y-6">
       {/* KPI tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className={`grid grid-cols-2 md:grid-cols-3 gap-4 ${hasCommission ? 'xl:grid-cols-4' : 'xl:grid-cols-6'}`}>
         {stats.map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all duration-300">
             <div className="text-lg font-bold text-gray-900">{s.value}</div>
@@ -285,6 +299,7 @@ export default function PartnerOverview({ data, showActivity = true }: Props) {
                     <th className="text-left p-4 font-medium text-gray-500">Student</th>
                     <th className="text-left p-4 font-medium text-gray-500">Program</th>
                     <th className="text-left p-4 font-medium text-gray-500">Amount</th>
+                    {hasCommission && <th className="text-left p-4 font-medium text-gray-500">Commission ({commissionPct}%)</th>}
                     <th className="text-left p-4 font-medium text-gray-500">Method</th>
                     <th className="text-left p-4 font-medium text-gray-500">Status</th>
                     <th className="text-left p-4 font-medium text-gray-500">Download</th>
@@ -298,6 +313,11 @@ export default function PartnerOverview({ data, showActivity = true }: Props) {
                       <td className="p-4 font-medium text-gray-900">{p.studentFirstName} {p.studentLastName}</td>
                       <td className="p-4 text-gray-500">{p.programTitle}</td>
                       <td className="p-4 font-medium text-gray-900">{fmtMoney(p.amount)}</td>
+                      {hasCommission && (
+                        <td className="p-4 font-medium text-orange-600">
+                          {p.status === 'completed' ? commissionOn(p.amount) : '—'}
+                        </td>
+                      )}
                       <td className="p-4 text-gray-500">{p.method}</td>
                       <td className="p-4">
                         <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${paymentBadge(p.status)}`}>{p.status}</span>

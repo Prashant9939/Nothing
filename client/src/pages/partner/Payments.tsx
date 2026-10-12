@@ -76,7 +76,6 @@ export default function PartnerPayments() {
   const { kpis, payments } = detail;
 
   const stats = [
-    { label: 'Paid Revenue', value: fmtMoney(kpis.paidAmount), sub: `${kpis.paidCount} successful payments` },
     { label: 'Pending Amount', value: fmtMoney(kpis.pendingAmount), sub: 'awaiting payment' },
     { label: 'Total Transactions', value: payments.length, sub: 'all recorded payments' },
   ];
@@ -90,7 +89,7 @@ export default function PartnerPayments() {
       </div>
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {stats.map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all duration-300">
             <div className="text-lg font-bold text-gray-900">{s.value}</div>

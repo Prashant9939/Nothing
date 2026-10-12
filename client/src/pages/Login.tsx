@@ -5,6 +5,7 @@ import { Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { studentApi } from '../api';
 import AuthSplit from '../components/AuthSplit';
+import LiquidLogo from '../components/LiquidLogo';
 import { EyeIcon } from "@animateicons/react/lucide";
 import { EyeOffIcon } from "@animateicons/react/lucide";
 import { MailIcon } from "@animateicons/react/lucide";
@@ -42,7 +43,7 @@ export default function Login() {
     try {
       await login(email, password, remember);
       try {
-        const u = JSON.parse(localStorage.getItem('user') || 'null');
+        const u = JSON.parse(sessionStorage.getItem('user') || 'null');
         if (u && u.role !== 'admin' && u.role !== 'partner') sessionStorage.setItem('iq:channel-banner', '1');
       } catch {
         sessionStorage.setItem('iq:channel-banner', '1');
@@ -61,11 +62,7 @@ export default function Login() {
   return (
     <AuthSplit>
       <div>
-        <Link to="/" className="inline-flex items-center gap-2.5 mb-4">
-          <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/25 ring-1 ring-orange-100 hover:scale-105 transition-all duration-300">
-            <img src="/logo/logo-iq.png" alt="IQIntern" className="h-7 w-7 object-contain" />
-          </div>
-        </Link>
+        <LiquidLogo />
         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Welcome back</h1>
         <p className="mt-2 text-sm text-gray-500">Sign in with email, phone number or registration number</p>
       </div>

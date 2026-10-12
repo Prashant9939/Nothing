@@ -9,8 +9,8 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const PDFDocument = require('pdfkit');
-const QRCode = require('qrcode');
+// pdfkit + qrcode load lazily inside the renderers — boot must not pay for
+// PDF machinery it may never use (see routes/documents.js for the rationale).
 const { companyName, companyAddress, cinLabel, footText, drawStamp, drawDisclaimer, siteUrl } = require('../lib/documentBrand');
 
 const router = express.Router();
@@ -84,6 +84,7 @@ const VERIFY_BASE = (process.env.SITE_URL || `http://localhost:${process.env.POR
 
 async function makeVerifyQr() {
   try {
+    const QRCode = require('qrcode');
     const base = (siteUrl() || VERIFY_BASE).replace(/\/+$/, '');
     return await QRCode.toBuffer(`${base}/certification`, {
       margin: 1, width: 240, color: { dark: INK, light: '#FFFFFF' },
@@ -425,6 +426,7 @@ async function streamForm(res, key, ctx = {}) {
   if (!form) return false;
 
   const qr = 'qr' in ctx ? ctx.qr : await makeVerifyQr();
+  const PDFDocument = require('pdfkit');
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename=${form.filename}`);

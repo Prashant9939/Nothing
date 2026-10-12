@@ -33,6 +33,27 @@
   --animate-qr-glow: qr-glow 3s ease-in-out infinite;
   --animate-qr-bracket: qr-bracket 2.8s ease-in-out infinite;
   --animate-qr-sheen: qr-sheen 3.4s ease-in-out infinite;
+
+  /* Auth panel — IQIntern logo animation (replaced the fluid video) */
+  --animate-logo-breathe: logo-breathe 5s ease-in-out infinite;
+  --animate-ring-pulse: ring-pulse 3.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  --animate-orbit-slow: orbit-slow 16s linear infinite;
+  --animate-logo-pop: logo-pop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-panel-sheen: panel-sheen 5.5s ease-in-out infinite;
+  --animate-logo-bob: logo-bob 3.6s ease-in-out infinite;
+  --animate-logo-sheen: logo-sheen 4.5s ease-in-out infinite;
+
+  /* Liquid smear reveal (login/register logo) — paint blobs merge, mark streaks in */
+  --animate-liquid-blob: liquid-blob 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-logo-streak: logo-streak 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s both;
+  --animate-logo-trail: logo-trail 0.7s ease-out both;
+  --animate-liquid-splat: liquid-splat 0.55s cubic-bezier(0.22, 1, 0.36, 1) 1.15s both;
+  --animate-word-streak: word-streak 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 1.15s both;
+
+  /* Hero panel animated SVG — orbit rings + morphing liquid blob */
+  --animate-ring-spin: ring-spin 22s linear infinite;
+  --animate-ring-spin-rev: ring-spin-rev 16s linear infinite;
+  --animate-blob-morph: blob-morph 10s ease-in-out infinite;
 }
 
 @keyframes float {
@@ -101,6 +122,174 @@
   58%, 100% { transform: translateX(264px); }
 }
 
+/* Auth panel: ambient glows gently breathing */
+@keyframes logo-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.12); opacity: 1; }
+}
+
+/* Auth panel: rings expanding outward from the logo, then resetting */
+@keyframes ring-pulse {
+  0% { transform: scale(0.55); opacity: 0.9; }
+  70%, 100% { transform: scale(1.35); opacity: 0; }
+}
+
+/* Auth panel: slow orbit for the accent dots around the logo */
+@keyframes orbit-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Auth panel: logo card springs in once on mount */
+@keyframes logo-pop {
+  from { opacity: 0; transform: scale(0.85) translateY(16px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Auth panel: light sheen sweeping diagonally across the panel, then a pause */
+@keyframes panel-sheen {
+  0%, 20% { transform: translateX(-100%); }
+  55%, 100% { transform: translateX(100%); }
+}
+
+/* Small header logo (register page): gentle idle bob with a slight tilt */
+@keyframes logo-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(-5deg); }
+}
+
+/* Small header logo (register page): highlight sweeps across the mark, then pauses */
+@keyframes logo-sheen {
+  0%, 18% { transform: translateX(-130%) skewX(-18deg); }
+  50%, 100% { transform: translateX(230%) skewX(-18deg); }
+}
+
+/* Liquid reveal: paint blobs squish in from both sides, overshoot the centre,
+   then collapse into the mark. The SVG goo filter merges them while they touch.
+   --bx is the blob's starting offset (set inline per blob). */
+@keyframes liquid-blob {
+  0% {
+    transform: translateX(var(--bx)) scale(0.3) rotate(0deg);
+    opacity: 0;
+  }
+  22% { opacity: 1; }
+  55% {
+    transform: translateX(calc(var(--bx) * -0.15)) scale(1.15) rotate(35deg);
+    opacity: 1;
+  }
+  85% {
+    transform: translateX(0) scale(0.5) rotate(70deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) scale(0.15) rotate(90deg);
+    opacity: 0;
+  }
+}
+
+/* Liquid reveal: mark streaks in from the left — stretched wide and blurred like
+   motion smear — then overshoots and snaps into place.
+   --streak-x scales the travel distance per instance (header logo vs hero card). */
+@keyframes logo-streak {
+  0% {
+    opacity: 0;
+    transform: translateX(var(--streak-x, -72px)) scaleX(2.2);
+    filter: blur(7px);
+  }
+  45% {
+    opacity: 1;
+    filter: blur(2.5px);
+  }
+  70% {
+    transform: translateX(7px) scaleX(0.92);
+    filter: blur(0);
+  }
+  85% { transform: translateX(-3px) scaleX(1.04); }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+    filter: blur(0);
+  }
+}
+
+/* Liquid reveal: ghost copies lagging behind the mark, fading out as it lands */
+@keyframes logo-trail {
+  0% {
+    opacity: 0;
+    transform: translateX(var(--streak-x, -72px)) scaleX(2.2);
+    filter: blur(8px);
+  }
+  40% { opacity: 0.5; }
+  75% {
+    opacity: 0.3;
+    transform: translateX(calc(var(--streak-x, -72px) * 0.25)) scaleX(1.4);
+    filter: blur(7px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(calc(var(--streak-x, -72px) * 0.06)) scaleX(1);
+    filter: blur(5px);
+  }
+}
+
+/* Liquid reveal: splash ring when the mark lands */
+@keyframes liquid-splat {
+  0% { opacity: 0; transform: scale(0.55); }
+  25% { opacity: 0.85; }
+  100% { opacity: 0; transform: scale(1.9); }
+}
+
+/* Hero panel: wordmark streaks in behind the mark — sliding, blurred, with the
+   letters tightening from wide tracking into place */
+@keyframes word-streak {
+  0% {
+    opacity: 0;
+    transform: translateX(-90px);
+    filter: blur(6px);
+    letter-spacing: 0.35em;
+  }
+  55% {
+    opacity: 1;
+    transform: translateX(8px);
+    filter: blur(1.5px);
+    letter-spacing: -0.045em;
+  }
+  75% {
+    transform: translateX(-3px);
+    letter-spacing: -0.05em;
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+    letter-spacing: -0.025em;
+  }
+}
+
+/* Hero panel animated SVG: orbit rings */
+@keyframes ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes ring-spin-rev {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+
+/* Hero panel animated SVG: liquid blob slowly morphing (browsers without CSS
+   `d` animation keep the static d attribute) */
+@keyframes blob-morph {
+  0%, 100% { d: path("M 120 44 C 162 44 196 78 196 120 C 196 162 162 196 120 196 C 78 196 44 162 44 120 C 44 78 78 44 120 44 Z"); }
+  33% { d: path("M 110 40 C 162 36 200 84 190 126 C 180 166 148 200 104 196 C 66 192 40 154 46 114 C 52 76 68 44 110 40 Z"); }
+  66% { d: path("M 128 48 C 170 52 202 90 194 132 C 186 172 146 202 106 194 C 68 186 42 152 50 112 C 58 74 90 44 128 48 Z"); }
+}
+
+/* SVG orbit groups: rotate around the viewBox centre, not the element's own box */
+.svg-orbit {
+  transform-box: view-box;
+  transform-origin: center;
+}
+
 /* Scroll reveal: hidden until RevealOnScroll adds .animate-in.
    Must live INSIDE @layer utilities: in Tailwind v4 unlayered rules beat every
    layered utility regardless of specificity, which would permanently block
@@ -144,6 +333,16 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-page-in {
     animation-name: page-in-fade;
+  }
+  /* Auth panel: drop the infinite loops entirely (logo stays static) */
+  /* Reduced motion: drop the older ambient loops (glows/rings/orbits/sheens).
+     The IQIntern logo reveal is intentionally NOT gated — it's the brand
+     moment on auth pages and plays regardless of the OS setting. */
+  .animate-logo-breathe,
+  .animate-ring-pulse,
+  .animate-orbit-slow,
+  .animate-panel-sheen {
+    animation: none;
   }
 }
 @keyframes page-in-fade {

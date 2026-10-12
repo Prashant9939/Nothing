@@ -17,7 +17,7 @@ const inputCls =
 
 const emptyForm = {
   partnerName: '', fullName: '', email: '', phone: '',
-  password: '', confirmPassword: '',
+  password: '', confirmPassword: '', commissionPercent: '',
 };
 
 export default function NewPartnerModal({ open, onClose, onCreated }: Props) {
@@ -40,6 +40,10 @@ export default function NewPartnerModal({ open, onClose, onCreated }: Props) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       setError('Invalid email format'); return;
     }
+    const pct = form.commissionPercent.trim() === '' ? 0 : Number(form.commissionPercent);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      setError('Commission must be a percentage between 0 and 100'); return;
+    }
     const policyError = passwordPolicyError(form.password);
     if (policyError) { setError(policyError); return; }
     if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return; }
@@ -54,6 +58,7 @@ export default function NewPartnerModal({ open, onClose, onCreated }: Props) {
         phone: form.phone,
         partnerName: form.partnerName.trim(),
         password: form.password,
+        commissionPercent: pct,
       });
       popup.success(
         `${form.partnerName} created. Partner credentials: ${form.email} / ${form.password}`,
@@ -98,6 +103,23 @@ export default function NewPartnerModal({ open, onClose, onCreated }: Props) {
                 <input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="Phone number *" className={inputCls} />
               </div>
               <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="Login email *" className={inputCls} />
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Commission</p>
+              <div className="flex items-center gap-3">
+                <div className="relative w-32 shrink-0">
+                  <input
+                    type="number" min="0" max="100" step="0.5"
+                    value={form.commissionPercent}
+                    onChange={(e) => set('commissionPercent', e.target.value)}
+                    placeholder="e.g. 5"
+                    className="w-full px-3.5 pr-9 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">%</span>
+                </div>
+                <p className="text-xs text-gray-500">Share of every completed payment from students this partner registers — e.g. 5% of ₹199 = ₹9.95 added to their payout. Leave blank for no commission.</p>
+              </div>
             </div>
 
             <div className="space-y-3">

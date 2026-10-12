@@ -14,9 +14,12 @@ const adminOnly = async (req, res, next) => {
 const ANNOUNCEMENT_COLUMNS = 'id, title, message, createdAt';
 
 const listForUser = async (userId) => {
-  const announcements = await db.all(`SELECT ${ANNOUNCEMENT_COLUMNS}, (SELECT COUNT(*) FROM announcement_reads r WHERE r.announcementId = a.id) AS readCount
-     FROM announcements a ORDER BY a.createdAt DESC, a.id DESC`);
-  const readRows = await db.all('SELECT announcementId FROM announcement_reads WHERE userId = ?', userId);
+  // Independent reads — run them together (2 RTTs → 1 wave on a remote pooler)
+  const [announcements, readRows] = await Promise.all([
+    db.all(`SELECT ${ANNOUNCEMENT_COLUMNS}, (SELECT COUNT(*) FROM announcement_reads r WHERE r.announcementId = a.id) AS readCount
+       FROM announcements a ORDER BY a.createdAt DESC, a.id DESC`),
+    db.all('SELECT announcementId FROM announcement_reads WHERE userId = ?', userId),
+  ]);
   const readIds = new Set(readRows.map((r) => r.announcementId));
   return announcements.map((a) => ({ ...a, read: readIds.has(a.id) }));
 };

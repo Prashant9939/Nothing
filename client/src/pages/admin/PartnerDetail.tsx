@@ -23,6 +23,9 @@ export default function AdminPartnerDetail() {
   const [error, setError] = useState('');
   const [toggling, setToggling] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editingPct, setEditingPct] = useState(false);
+  const [pctDraft, setPctDraft] = useState('');
+  const [savingPct, setSavingPct] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -72,6 +75,35 @@ export default function AdminPartnerDetail() {
     }
   };
 
+  const saveCommission = async () => {
+    if (!detail) return;
+    const pct = Number(pctDraft);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      popup.error('Commission must be a percentage between 0 and 100', 'Invalid Commission');
+      return;
+    }
+    setSavingPct(true);
+    try {
+      const res = await adminApi.updatePartnerCommission(detail.partner.id, pct);
+      setDetail({
+        ...detail,
+        partner: { ...detail.partner, commissionPercent: res.data.commissionPercent },
+        kpis: {
+          ...detail.kpis,
+          commissionPercent: res.data.commissionPercent,
+          // Same formula the backend uses: pct% of the completed total.
+          commissionAmount: Math.round(detail.kpis.paidAmount * res.data.commissionPercent) / 100,
+        },
+      });
+      popup.success(res.data.message, 'Commission Updated');
+      setEditingPct(false);
+    } catch (err: any) {
+      popup.error(err.response?.data?.error || 'Could not update the commission. Please try again.', 'Update Failed');
+    } finally {
+      setSavingPct(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
@@ -95,6 +127,7 @@ export default function AdminPartnerDetail() {
 
   const { partner } = detail;
   const suspended = partner.accountStatus === 'suspended';
+  const commissionPct = Number(partner.commissionPercent || 0);
 
   return (
     <div className="space-y-6">
@@ -113,6 +146,35 @@ export default function AdminPartnerDetail() {
             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${suspended ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
               {partner.accountStatus}
             </span>
+            {editingPct ? (
+              <span className="inline-flex items-center gap-1.5">
+                <input
+                  type="number" min="0" max="100" step="0.5"
+                  value={pctDraft}
+                  onChange={(e) => setPctDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveCommission(); if (e.key === 'Escape') setEditingPct(false); }}
+                  autoFocus
+                  className="w-20 px-2 py-1 text-xs border border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  aria-label="Commission percentage"
+                />
+                <span className="text-xs text-gray-500">% commission</span>
+                <button onClick={saveCommission} disabled={savingPct} className="text-xs font-semibold text-orange-600 hover:text-orange-700 disabled:opacity-50">
+                  {savingPct ? 'Saving…' : 'Save'}
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => { setPctDraft(String(commissionPct)); setEditingPct(true); }}
+                className={`text-xs px-2.5 py-1 rounded-full font-medium border transition-colors ${
+                  commissionPct > 0
+                    ? 'bg-orange-50 text-orange-600 border-orange-100 hover:bg-orange-100'
+                    : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+                }`}
+                title="Edit commission rate"
+              >
+                {commissionPct > 0 ? `${commissionPct}% commission` : 'No commission — click to set'}
+              </button>
+            )}
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
             {partner.email} · {partner.phone || 'no phone'} · Joined {formatDate(partner.createdAt)}

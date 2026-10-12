@@ -69,7 +69,7 @@ export default function AdminInternships() {
     setDownloadingId(i.id);
     try {
       const res = await fetch(`/api/admin/internships/${i.id}/answer-key`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { Authorization: `Bearer ${sessionStorage.getItem('token')}` },
         // Same stall guard as the student downloads: fetch never times out
         // on its own, which would leave the button spinning forever.
         signal: AbortSignal.timeout(60000),
