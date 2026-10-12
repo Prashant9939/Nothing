@@ -32,7 +32,7 @@ async function getCommissionSummary(partnerId) {
     WHERE e.partnerId = ? AND p.status = 'completed'
   `, partnerId);
   const requests = await db.all(`
-    SELECT id, amount, status, priority, note, createdAt, updatedAt
+    SELECT id, amount, upiId, status, priority, note, createdAt, updatedAt
     FROM payout_requests
     WHERE partnerId = ?
     ORDER BY createdAt DESC, id DESC
@@ -83,13 +83,18 @@ router.get('/commission', authenticateToken, partnerOnly, async (req, res) => {
 });
 
 // Request a payout of the partner's earned commission. The request lands in
-// the admin's Issues panel with a priority tag for triage.
+// the admin's Issues panel with a priority tag for triage. The UPI ID is how
+// the admin actually transfers the money.
 router.post('/payout-request', authenticateToken, partnerOnly, async (req, res) => {
   try {
     const amount = round2(req.body.amount);
     const note = String(req.body.note || '').slice(0, 500);
+    const upiId = String(req.body.upiId || '').trim();
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ error: 'Enter a valid payout amount' });
+    }
+    if (!upiId || !/^[a-zA-Z0-9._-]{2,64}@[a-zA-Z0-9.-]{2,64}$/.test(upiId)) {
+      return res.status(400).json({ error: 'Enter a valid UPI ID (e.g. yourname@upi or 9876543210@okbank)' });
     }
 
     const summary = await getCommissionSummary(req.user.id);
@@ -100,11 +105,11 @@ router.post('/payout-request', authenticateToken, partnerOnly, async (req, res) 
     }
 
     const result = await db.run(
-      'INSERT INTO payout_requests (partnerId, amount, note) VALUES (?, ?, ?)',
-      req.user.id, amount, note
+      'INSERT INTO payout_requests (partnerId, amount, upiId, note) VALUES (?, ?, ?, ?)',
+      req.user.id, amount, upiId, note
     );
     const request = await db.get(
-      'SELECT id, amount, status, priority, note, createdAt FROM payout_requests WHERE id = ?',
+      'SELECT id, amount, upiId, status, priority, note, createdAt FROM payout_requests WHERE id = ?',
       result.lastInsertRowid
     );
     res.status(201).json({

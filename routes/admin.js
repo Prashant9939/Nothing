@@ -1035,7 +1035,7 @@ router.put('/partners/:id/commission', authenticateToken, adminOnly, async (req,
 router.get('/payout-requests', authenticateToken, adminOnly, async (req, res) => {
   try {
     const requests = await db.all(`
-      SELECT pr.id, pr.partnerId, pr.amount, pr.status, pr.priority, pr.note, pr.createdAt, pr.updatedAt,
+      SELECT pr.id, pr.partnerId, pr.amount, pr.upiId, pr.status, pr.priority, pr.note, pr.createdAt, pr.updatedAt,
         u.firstName, u.lastName, u.email, u.partnerName, u.commissionPercent
       FROM payout_requests pr
       JOIN users u ON u.id = pr.partnerId
@@ -1075,7 +1075,7 @@ router.put('/payout-requests/:id', authenticateToken, adminOnly, async (req, res
           updatedAt = to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS')
       WHERE id = ?
     `, status ?? null, priority ?? null, id);
-    const request = await db.get('SELECT id, partnerId, amount, status, priority, note, createdAt, updatedAt FROM payout_requests WHERE id = ?', id);
+    const request = await db.get('SELECT id, partnerId, amount, upiId, status, priority, note, createdAt, updatedAt FROM payout_requests WHERE id = ?', id);
     res.json({ message: 'Payout request updated', request });
   } catch (err) {
     console.error('Update payout request error:', err);

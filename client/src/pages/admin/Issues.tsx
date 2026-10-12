@@ -196,6 +196,11 @@ export default function AdminIssues() {
                   </div>
                   <div className="flex items-center gap-4 mt-1 flex-wrap">
                     <span className="text-xs text-gray-500">{r.email}</span>
+                    {r.upiId && (
+                      <span className="text-xs font-mono text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
+                        UPI: {r.upiId}
+                      </span>
+                    )}
                     <span className="text-xs text-gray-500">{formatDate(r.createdAt)}</span>
                   </div>
                   {r.note && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-line">{r.note}</p>}

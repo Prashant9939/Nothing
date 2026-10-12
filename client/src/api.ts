@@ -442,11 +442,12 @@ export interface PartnerDetail {
 }
 
 // A partner's request to cash out earned commission — admin triages these
-// from the Issues panel with a priority tag.
+// from the Issues panel with a priority tag. upiId is where the money goes.
 export interface PayoutRequest {
   id: number;
   partnerId: number;
   amount: number;
+  upiId?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   priority: 'high' | 'normal' | 'low';
   note: string;
@@ -494,8 +495,8 @@ export interface RegisterStudentData {
 export const partnerApi = {
   getDashboard: () => api.get<PartnerDetail>('/partner/dashboard'),
   getCommission: () => api.get<CommissionSummary>('/partner/commission'),
-  requestPayout: (amount: number, note?: string) =>
-    api.post<{ message: string; request: PayoutRequest; available: number }>('/partner/payout-request', { amount, note }),
+  requestPayout: (data: { amount: number; upiId: string; note?: string }) =>
+    api.post<{ message: string; request: PayoutRequest; available: number }>('/partner/payout-request', data),
   registerStudent: (data: RegisterStudentData) =>
     api.post<{ message: string; user: { id: number; firstName: string; lastName: string; email: string } }>(
       '/partner/students', data

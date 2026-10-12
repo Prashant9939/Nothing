@@ -40,6 +40,7 @@ export default function CommissionModal({ open, onClose }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState('');
+  const [upi, setUpi] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -68,11 +69,17 @@ export default function CommissionModal({ open, onClose }: Props) {
       popup.error(`Amount exceeds your available commission of ${fmtMoney(summary.available)}`, 'Invalid Amount');
       return;
     }
+    const upiId = upi.trim();
+    if (!upiId || !/^[a-zA-Z0-9._-]{2,64}@[a-zA-Z0-9.-]{2,64}$/.test(upiId)) {
+      popup.error('Enter a valid UPI ID (e.g. yourname@upi or 9876543210@okbank)', 'Invalid UPI ID');
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await partnerApi.requestPayout(value, note.trim());
+      const res = await partnerApi.requestPayout({ amount: value, upiId, note: note.trim() });
       popup.success(res.data.message, 'Payout Requested');
       setAmount('');
+      setUpi('');
       setNote('');
       load();
     } catch (err: any) {
@@ -154,6 +161,15 @@ export default function CommissionModal({ open, onClose }: Props) {
                   </div>
                   <input
                     type="text"
+                    value={upi}
+                    onChange={(e) => setUpi(e.target.value)}
+                    placeholder="UPI ID * (e.g. yourname@upi or 9876543210@okbank)"
+                    maxLength={100}
+                    className={inputCls}
+                    aria-label="UPI ID"
+                  />
+                  <input
+                    type="text"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="Note for the admin (optional)"
@@ -185,7 +201,9 @@ export default function CommissionModal({ open, onClose }: Props) {
                             </span>
                           </div>
                           {r.note && <p className="text-xs text-gray-500 mt-0.5 truncate">{r.note}</p>}
-                          <p className="text-[11px] text-gray-400 mt-0.5">{formatDate(r.createdAt)}</p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            {formatDate(r.createdAt)}{r.upiId ? ` · UPI: ${r.upiId}` : ''}
+                          </p>
                         </div>
                       </div>
                     ))}
