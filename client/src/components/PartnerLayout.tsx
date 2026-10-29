@@ -55,12 +55,19 @@ export default function PartnerLayout() {
           {/* Logo */}
           <div className={`h-16 flex items-center border-b border-white/5 shrink-0 ${collapsed ? 'lg:justify-center px-2' : 'px-5'}`}>
             <Link to="/partner" className="flex items-center gap-2.5 min-w-0">
-              <div className="w-9 h-9 bg-gradient-to-br from-slate-100 to-white rounded-xl flex items-center justify-center shadow-[0_4px_12px_rgba(249,115,22,0.35)] shrink-0">
-                <img src="/logo/logo-iq.png" alt="IQIntern" className="h-7 w-7 object-contain" />
-              </div>
+              {collapsed ? (
+                <div className="w-9 h-9 bg-gradient-to-br from-slate-100 to-white rounded-xl flex items-center justify-center shadow-[0_4px_12px_rgba(249,115,22,0.35)] shrink-0">
+                  <img src="/logo/logo-iq.png" alt="IQIntern" className="h-7 w-7 object-contain" />
+                </div>
+              ) : (
+                /* Full logo lockup on a white chip — the mark's dark ink needs
+                   the light backing to read on the dark sidebar. */
+                <span className="inline-flex shrink-0 items-center rounded-xl bg-white px-3 py-2 shadow-[0_4px_12px_rgba(249,115,22,0.35)]">
+                  <img src="/logo/logo-trimmed.png" alt="IQIntern" className="hidden h-6 w-auto object-contain lg:block" draggable={false} />
+                </span>
+              )}
               {!collapsed && (
                 <div className="hidden lg:block min-w-0">
-                  <span className="text-sm font-bold text-white">IQ<span className="text-slate-300">Intern</span></span>
                   <p className="text-[9px] text-slate-400 uppercase tracking-widest">Partner Portal</p>
                 </div>
               )}
