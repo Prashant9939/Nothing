@@ -36,12 +36,12 @@
 
   /* Auth panel — IQIntern logo animation (replaced the fluid video) */
   --animate-logo-breathe: logo-breathe 5s ease-in-out infinite;
-  --animate-ring-pulse: ring-pulse 3.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-orbit-slow: orbit-slow 16s linear infinite;
   --animate-logo-pop: logo-pop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   --animate-panel-sheen: panel-sheen 5.5s ease-in-out infinite;
   --animate-logo-bob: logo-bob 3.6s ease-in-out infinite;
   --animate-logo-sheen: logo-sheen 4.5s ease-in-out infinite;
+  --animate-logo-glint: logo-glint 6.5s ease-in-out infinite;
+  --animate-logo-sparkle: logo-sparkle 4.5s linear infinite;
 
   /* Liquid smear reveal (login/register logo) — paint blobs merge, mark streaks in */
   --animate-liquid-blob: liquid-blob 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -50,9 +50,7 @@
   --animate-liquid-splat: liquid-splat 0.55s cubic-bezier(0.22, 1, 0.36, 1) 1.15s both;
   --animate-word-streak: word-streak 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 1.15s both;
 
-  /* Hero panel animated SVG — orbit rings + morphing liquid blob */
-  --animate-ring-spin: ring-spin 22s linear infinite;
-  --animate-ring-spin-rev: ring-spin-rev 16s linear infinite;
+  /* Hero panel animated SVG — morphing liquid blob */
   --animate-blob-morph: blob-morph 10s ease-in-out infinite;
 }
 
@@ -128,18 +126,6 @@
   50% { transform: scale(1.12); opacity: 1; }
 }
 
-/* Auth panel: rings expanding outward from the logo, then resetting */
-@keyframes ring-pulse {
-  0% { transform: scale(0.55); opacity: 0.9; }
-  70%, 100% { transform: scale(1.35); opacity: 0; }
-}
-
-/* Auth panel: slow orbit for the accent dots around the logo */
-@keyframes orbit-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 /* Auth panel: logo card springs in once on mount */
 @keyframes logo-pop {
   from { opacity: 0; transform: scale(0.85) translateY(16px); }
@@ -162,6 +148,22 @@
 @keyframes logo-sheen {
   0%, 18% { transform: translateX(-130%) skewX(-18deg); }
   50%, 100% { transform: translateX(230%) skewX(-18deg); }
+}
+
+/* Auth panel: light glint sweeping across the big logo lockup, then a pause */
+@keyframes logo-glint {
+  0%, 52% { transform: translateX(-130%) skewX(-18deg); }
+  72%, 100% { transform: translateX(230%) skewX(-18deg); }
+}
+
+/* Auth panel: sparkle motes drifting up around the logo. Per-mote duration,
+   delay and sideways drift (--spark-x) are set inline so the field never
+   looks synchronized. */
+@keyframes logo-sparkle {
+  0% { transform: translate(0, 14px) scale(0.6); opacity: 0; }
+  18% { opacity: 0.9; }
+  70% { opacity: 0.6; }
+  100% { transform: translate(var(--spark-x, 0px), -130px) scale(1); opacity: 0; }
 }
 
 /* Liquid reveal: paint blobs squish in from both sides, overshoot the centre,
@@ -266,28 +268,12 @@
   }
 }
 
-/* Hero panel animated SVG: orbit rings */
-@keyframes ring-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-@keyframes ring-spin-rev {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(-360deg); }
-}
-
 /* Hero panel animated SVG: liquid blob slowly morphing (browsers without CSS
    `d` animation keep the static d attribute) */
 @keyframes blob-morph {
   0%, 100% { d: path("M 120 44 C 162 44 196 78 196 120 C 196 162 162 196 120 196 C 78 196 44 162 44 120 C 44 78 78 44 120 44 Z"); }
   33% { d: path("M 110 40 C 162 36 200 84 190 126 C 180 166 148 200 104 196 C 66 192 40 154 46 114 C 52 76 68 44 110 40 Z"); }
   66% { d: path("M 128 48 C 170 52 202 90 194 132 C 186 172 146 202 106 194 C 68 186 42 152 50 112 C 58 74 90 44 128 48 Z"); }
-}
-
-/* SVG orbit groups: rotate around the viewBox centre, not the element's own box */
-.svg-orbit {
-  transform-box: view-box;
-  transform-origin: center;
 }
 
 /* Scroll reveal: hidden until RevealOnScroll adds .animate-in.
@@ -339,8 +325,6 @@
      The IQIntern logo reveal is intentionally NOT gated — it's the brand
      moment on auth pages and plays regardless of the OS setting. */
   .animate-logo-breathe,
-  .animate-ring-pulse,
-  .animate-orbit-slow,
   .animate-panel-sheen {
     animation: none;
   }

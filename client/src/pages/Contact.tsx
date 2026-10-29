@@ -31,7 +31,7 @@ export default function Contact() {
 
   const contactMethods = [
     { icon: <Mail className="w-8 h-8 text-orange-500" />, title: 'Email Us', desc: 'Our team responds within 24 hours', details: ['support@iqintern.in', 'info@iqintern.in'] },
-    { icon: <Phone className="w-8 h-8 text-orange-500" />, title: 'Call Us', desc: 'Mon - Sat, 9AM - 8PM IST', details: ['+91 9939503289'] },
+    { icon: <Phone className="w-8 h-8 text-orange-500" />, title: 'Call Us', desc: 'Mon - Sat, 9AM - 8PM IST', details: ['+91 70046 00179'] },
     { icon: <MessageSquare className="w-8 h-8 text-orange-500" />, title: 'WhatsApp', desc: 'Instant replies during business hours', details: ['Chat with us anytime'] },
     { icon: <MapPin className="w-8 h-8 text-orange-500" />, title: 'Visit Us', desc: 'Virtual Office - India', details: ['IQIntern Education Pvt. Ltd.'] },
   ];

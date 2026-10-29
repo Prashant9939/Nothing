@@ -16,6 +16,18 @@ const PANEL_BLOBS = [
   { size: 40, left: 115, top: 48, from: '0px', color: 'bg-orange-500', delay: 0.24 },
 ];
 
+/* Sparkle motes drifting up around the logo (replaced the orbiting rings).
+   Coordinates are relative to the ~174x64 lockup box; each mote rises ~130px
+   with its own duration, delay and sideways drift. */
+const SPARKS = [
+  { left: -8, bottom: 4, size: 4, color: 'bg-amber-300', dur: 4.6, delay: 0, drift: '-16px' },
+  { left: 28, bottom: -8, size: 5, color: 'bg-orange-400', dur: 5.2, delay: 1.2, drift: '12px' },
+  { left: 62, bottom: -4, size: 3, color: 'bg-amber-400', dur: 4.2, delay: 2.4, drift: '-10px' },
+  { left: 98, bottom: -10, size: 6, color: 'bg-orange-400', dur: 5.8, delay: 0.6, drift: '14px' },
+  { left: 134, bottom: -2, size: 4, color: 'bg-amber-300', dur: 4.8, delay: 3.1, drift: '-12px' },
+  { left: 172, bottom: 6, size: 5, color: 'bg-orange-300', dur: 5.4, delay: 1.8, drift: '10px' },
+];
+
 /* The full logo lockup sits directly on the panel (no white card) — the warm
    drop-shadow keeps it readable over the amber gradient and blob glow. */
 const logoClass = 'block h-16 w-auto object-contain drop-shadow-[0_12px_28px_rgba(120,53,15,0.30)]';
@@ -51,21 +63,6 @@ export default function AuthSplit({ children, wide = false }: AuthSplitProps) {
           <div className="absolute -top-20 -left-20 h-64 w-64 rounded-full bg-orange-400/20 blur-3xl animate-logo-breathe" />
           <div className="absolute -bottom-20 -right-20 h-64 w-64 rounded-full bg-amber-400/25 blur-3xl animate-logo-breathe [animation-delay:2.4s]" />
 
-          {/* Pulse rings behind the logo */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-44 w-44 rounded-full border-2 border-orange-500/25 animate-ring-pulse" />
-            <div className="absolute h-44 w-44 rounded-full border-2 border-orange-400/25 animate-ring-pulse [animation-delay:1.2s]" />
-          </div>
-
-          {/* Orbiting accent dots */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative h-80 w-80 animate-orbit-slow">
-              <span className="absolute -top-1 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.8)]" />
-              <span className="absolute top-1/2 -right-1 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.8)]" />
-              <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-orange-300" />
-            </div>
-          </div>
-
           {/* Diagonal sheen sweep — BEHIND the logo content so it never
               washes over the mark or wordmark */}
           <div className="absolute inset-0 animate-panel-sheen bg-gradient-to-r from-transparent via-white/60 to-transparent" />
@@ -91,12 +88,10 @@ export default function AuthSplit({ children, wide = false }: AuthSplitProps) {
                   </defs>
                 </svg>
 
-                {/* Animated SVG: morphing liquid blob + rotating dashed orbit
-                    rings with glowing travelling dots (spins forever, behind
-                    the logo). Stage is -inset-20 so the ring clears the wide
-                    lockup. */}
-                <div aria-hidden="true" className="pointer-events-none absolute -inset-20">
-                  <svg className="h-full w-full overflow-visible" viewBox="0 0 240 240" fill="none">
+                {/* Morphing liquid blob glow behind the logo — fixed square
+                    stage centered on the mark so the glow stays concentric. */}
+                <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 h-[320px] w-[320px] -translate-x-1/2 -translate-y-1/2">
+                  <svg className="h-full w-full" viewBox="0 0 240 240" fill="none">
                     <defs>
                       <radialGradient id="iq-blob-grad" cx="35%" cy="30%" r="75%">
                         <stop offset="0%" stopColor="#fb923c" stopOpacity="0.3" />
@@ -104,42 +99,34 @@ export default function AuthSplit({ children, wide = false }: AuthSplitProps) {
                         <stop offset="100%" stopColor="#fcd34d" stopOpacity="0" />
                       </radialGradient>
                     </defs>
-
-                    {/* Slowly morphing liquid blob */}
                     <path
                       className="animate-blob-morph blur-xl"
                       d="M 120 44 C 162 44 196 78 196 120 C 196 162 162 196 120 196 C 78 196 44 162 44 120 C 44 78 78 44 120 44 Z"
                       fill="url(#iq-blob-grad)"
                     />
-
-                    {/* Dashed orbit ring */}
-                    <g className="svg-orbit animate-ring-spin">
-                      <circle
-                        cx="120"
-                        cy="120"
-                        r="112"
-                        stroke="#fb923c"
-                        strokeOpacity="0.4"
-                        strokeWidth="2"
-                        strokeDasharray="3 10"
-                        strokeLinecap="round"
-                      />
-                    </g>
-
-                    {/* Counter-rotating arc */}
-                    <g className="svg-orbit animate-ring-spin-rev">
-                      <circle cx="120" cy="120" r="96" stroke="#f59e0b" strokeOpacity="0.45" strokeWidth="1.5" strokeDasharray="80 523" />
-                    </g>
-
-                    {/* Glowing travelling dots on the rings */}
-                    <g className="svg-orbit animate-ring-spin">
-                      <circle cx="120" cy="8" r="4.5" fill="#f97316" className="drop-shadow-[0_0_8px_rgba(249,115,22,0.9)]" />
-                    </g>
-                    <g className="svg-orbit animate-ring-spin-rev [animation-duration:26s]">
-                      <circle cx="120" cy="24" r="3" fill="#fbbf24" className="drop-shadow-[0_0_6px_rgba(251,191,36,0.9)]" />
-                    </g>
                   </svg>
                 </div>
+
+                {/* Sparkle motes drifting up around the logo */}
+                {SPARKS.map((s, i) => (
+                  <span
+                    key={i}
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute rounded-full animate-logo-sparkle ${s.color}`}
+                    style={
+                      {
+                        left: s.left,
+                        bottom: s.bottom,
+                        width: s.size,
+                        height: s.size,
+                        animationDuration: `${s.dur}s`,
+                        animationDelay: `${s.delay}s`,
+                        '--spark-x': s.drift,
+                        boxShadow: '0 0 8px rgba(249,115,22,0.7)',
+                      } as CSSProperties
+                    }
+                  />
+                ))}
 
                 <div
                   aria-hidden="true"
@@ -185,6 +172,27 @@ export default function AuthSplit({ children, wide = false }: AuthSplitProps) {
                     </div>
                   ))}
                   <img src="/logo/logo-trimmed.png" alt="IQIntern" className={logoClass} draggable={false} />
+                </div>
+
+                {/* Periodic glint sweeping across the logo — masked to the
+                    lockup's alpha so the highlight only touches the mark. */}
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 overflow-hidden"
+                  style={
+                    {
+                      maskImage: 'url(/logo/logo-trimmed.png)',
+                      WebkitMaskImage: 'url(/logo/logo-trimmed.png)',
+                      maskSize: 'contain',
+                      WebkitMaskSize: 'contain',
+                      maskRepeat: 'no-repeat',
+                      WebkitMaskRepeat: 'no-repeat',
+                      maskPosition: 'center',
+                      WebkitMaskPosition: 'center',
+                    } as CSSProperties
+                  }
+                >
+                  <div className="absolute inset-0 animate-logo-glint bg-gradient-to-r from-transparent via-white/75 to-transparent" />
                 </div>
               </div>
             </div>
