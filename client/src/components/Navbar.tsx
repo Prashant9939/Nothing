@@ -54,7 +54,7 @@ export default function Navbar() {
         ? 'left-0 right-0 top-0 rounded-none bg-white shadow-none ring-0 duration-300'
         : `left-3 right-3 top-3 md:left-6 md:right-6 rounded-2xl duration-500 ${scrolled
           ? 'bg-gradient-to-b from-white/80 to-white/60 backdrop-blur-3xl shadow-[0_12px_40px_rgba(0,0,0,0.15),0_4px_12px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.7),inset_0_-1px_0_rgba(255,255,255,0.3)] ring-1 ring-black/5'
-          : 'bg-gradient-to-b from-white/95 to-white/80 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.1),0_2px_8px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.9)]'
+          : 'bg-gradient-to-b from-white to-white/90 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.1),0_2px_8px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.9)]'
         }`
       }`}>
         <div className="px-3 sm:px-4 lg:px-6">
@@ -150,7 +150,7 @@ export default function Navbar() {
                   className={`relative px-4 py-2 text-base font-semibold rounded-full transition-all duration-200 ${
                     isActive(link.path)
                       ? 'text-orange-600 bg-orange-50'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
                   }`}
                 >
                   {link.label}
@@ -184,13 +184,13 @@ export default function Navbar() {
                       Dashboard
                     </Link>
                   )}
-                  <button onClick={handleLogout} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-full transition-all">
+                  <button onClick={handleLogout} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-red-500 hover:bg-red-50 rounded-full transition-all">
                     Logout
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Link to="/login" className="px-5 py-2 text-sm font-medium text-gray-700 hover:text-orange-600 rounded-full hover:bg-orange-50 transition-all">
+                  <Link to="/login" className="px-5 py-2 text-sm font-semibold text-gray-800 hover:text-orange-600 rounded-full hover:bg-orange-50 transition-all">
                     Login
                   </Link>
                   <Link to="/register" className="px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 rounded-full hover:from-amber-600 hover:to-orange-700 transition-all shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/30 hover:-translate-y-0.5">
