@@ -4,7 +4,7 @@ import { ArrowRight, Award, BookOpen, CalendarDays, Check, Clock } from 'lucide-
 import type { Internship } from '../api';
 import { categoryIcons, categoryImage, categoryLabels, titleCase } from '../categories';
 
-const formatMoney = (value: number) => `?${Number(value).toLocaleString('en-IN')}`;
+const formatMoney = (value: number) => `₹${Number(value).toLocaleString('en-IN')}`;
 
 const formatDate = (value: string) => {
   const d = /^\d{4}-\d{2}-\d{2}/.test(value) ? new Date(value.slice(0, 10)) : new Date(value);
