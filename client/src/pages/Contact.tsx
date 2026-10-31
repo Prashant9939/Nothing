@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, Clock, Lock, Mail, MapPin, MessageSquare, Phone, Target } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Clock, Lock, Mail, MapPin, MessageSquare, Phone, Send, Tag, Target, User } from 'lucide-react';
 import api from '../api';
 
 export default function Contact() {
@@ -124,61 +124,114 @@ export default function Contact() {
           </div>
 
           {/* Contact Form */}
-          <div className="md:col-span-3 bg-white border border-gray-200 rounded-xl p-6">
+          <div className="md:col-span-3 relative overflow-hidden bg-white rounded-3xl border border-gray-100 shadow-[0_20px_60px_rgba(15,23,42,0.07),0_8px_24px_rgba(15,23,42,0.04)] reveal reveal-pop">
+            {/* Warm corner glows — echoes the auth panel ambience */}
+            <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-orange-400/15 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-amber-300/15 blur-3xl" />
+            {/* Gradient top edge */}
+            <div className="h-1.5 bg-gradient-to-r from-amber-400 via-orange-500 to-orange-600" />
             {submitted ? (
-              <div className="bg-green-50 text-green-700 p-8 rounded-lg text-center border border-green-200">
-                <div className="mb-4 flex justify-center"><CheckCircle2 className="w-12 h-12 text-green-600" /></div>
-                <h3 className="font-bold text-xl mb-2">Message Sent Successfully!</h3>
-                <p className="text-sm mb-6">Thank you for reaching out. Our team will get back to you within 24 hours.</p>
+              <div className="p-10 text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-green-50 ring-8 ring-green-50/60">
+                  <CheckCircle2 className="w-9 h-9 text-green-600" />
+                </div>
+                <h3 className="text-xl font-bold mb-2">Message Sent Successfully!</h3>
+                <p className="text-sm text-gray-500 mb-7 max-w-sm mx-auto">Thank you for reaching out. Our team will get back to you within 24 hours.</p>
                 <button
                   onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', subject: '', message: '' }); }}
-                  className="px-6 py-2 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors"
+                  className="px-7 py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold rounded-xl shadow-lg shadow-orange-500/25 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300"
                 >
                   Send Another Message
                 </button>
               </div>
             ) : (
-              <>
+            <div className="p-7 sm:p-8">
+              {/* Card header */}
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/30 shrink-0">
+                  <MessageSquare className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">Tell us what you need</h3>
+                  <p className="text-xs text-gray-500">Fill this in — our team replies within 24 hours.</p>
+                </div>
+              </div>
               {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-200">{error}</div>
-            )}
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4 border border-red-200 flex items-center gap-2">
+                  <span className="shrink-0 w-5 h-5 bg-red-100 rounded-full flex items-center justify-center text-xs font-bold">!</span>
+                  {error}
+                </div>
+              )}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                    <input type="text" value={form.name} onChange={(e) => updateField('name', e.target.value)} placeholder="Your name" required className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                    <label htmlFor="cf-name" className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
+                    <div className="relative">
+                      <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input id="cf-name" type="text" value={form.name} onChange={(e) => updateField('name', e.target.value)} placeholder="Your name" required autoComplete="name" className="w-full pl-11 pr-4 py-3 bg-gray-50/70 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 transition-all duration-200" />
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                    <input type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} placeholder="Your email" required className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                    <label htmlFor="cf-email" className="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
+                    <div className="relative">
+                      <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input id="cf-email" type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} placeholder="Your email" required autoComplete="email" className="w-full pl-11 pr-4 py-3 bg-gray-50/70 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 transition-all duration-200" />
+                    </div>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                  <input type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="Your phone number" className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  <label htmlFor="cf-phone" className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
+                  <div className="relative">
+                    <Phone size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input id="cf-phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="Your phone number" autoComplete="tel" className="w-full pl-11 pr-4 py-3 bg-gray-50/70 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 transition-all duration-200" />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-                  <select value={form.subject} onChange={(e) => updateField('subject', e.target.value)} required className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
-                    <option value="">Select a subject</option>
-                    <option value="general">General Inquiry</option>
-                    <option value="program">Program Information</option>
-                    <option value="payment">Payment Issue</option>
-                    <option value="certificate">Certificate Verification</option>
-                    <option value="technical">Technical Support</option>
-                    <option value="partnership">Partnership Inquiry</option>
-                    <option value="other">Other</option>
-                  </select>
+                  <label htmlFor="cf-subject" className="block text-sm font-medium text-gray-700 mb-1.5">Subject</label>
+                  <div className="relative">
+                    <Tag size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <select id="cf-subject" value={form.subject} onChange={(e) => updateField('subject', e.target.value)} required className="w-full pl-11 pr-10 py-3 bg-gray-50/70 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 transition-all duration-200 appearance-none">
+                      <option value="">Select a subject</option>
+                      <option value="general">General Inquiry</option>
+                      <option value="program">Program Information</option>
+                      <option value="payment">Payment Issue</option>
+                      <option value="certificate">Certificate Verification</option>
+                      <option value="technical">Technical Support</option>
+                      <option value="partnership">Partnership Inquiry</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
-                  <textarea value={form.message} onChange={(e) => updateField('message', e.target.value)} rows={4} placeholder="How can we help you?" required className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 resize-y" />
+                  <label htmlFor="cf-message" className="block text-sm font-medium text-gray-700 mb-1.5">Message</label>
+                  <div className="relative">
+                    <MessageSquare size={18} className="absolute left-3.5 top-3.5 text-gray-400" />
+                    <textarea id="cf-message" value={form.message} onChange={(e) => updateField('message', e.target.value)} rows={4} placeholder="How can we help you?" required className="w-full pl-11 pr-4 py-3 bg-gray-50/70 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 transition-all duration-200 resize-y" />
+                  </div>
                 </div>
-                <button type="submit" disabled={loading} className="w-full py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
-                  {loading ? 'Sending...' : 'Send Message'}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 mt-2 flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold rounded-xl shadow-lg shadow-orange-500/25 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:hover:translate-y-0"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Sending...
+                    </span>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      Send Message
+                    </>
+                  )}
                 </button>
               </form>
-              </>
+            </div>
             )}
           </div>
         </div>
