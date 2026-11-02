@@ -262,8 +262,10 @@ export const adminApi = {
   createInternship: (data: any) => api.post('/admin/internships', data),
   updateInternship: (id: number, data: any) => api.put(`/admin/internships/${id}`, data),
   deleteInternship: (id: number) => api.delete(`/admin/internships/${id}`),
-  getUsers: () => api.get('/admin/users'),
-  getAdmins: () => api.get('/admin/admins'),
+  getUsers: (params?: { page?: number; limit?: number; search?: string; course?: string }) =>
+    api.get('/admin/users', { params }),
+  getAdmins: (params?: { page?: number; limit?: number; search?: string }) =>
+    api.get('/admin/admins', { params }),
   registerUser: (data: any) => api.post('/admin/users', data),
   getUser: (id: number) => api.get(`/admin/users/${id}`),
   updateUserRole: (id: number, role: string) => api.put(`/admin/users/${id}/role`, { role }),

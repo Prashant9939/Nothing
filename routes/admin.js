@@ -307,15 +307,87 @@ router.get('/internships/:id/answer-key', authenticateToken, adminOnly, async (r
 
 // ===================== USERS MANAGEMENT =====================
 // Students only — admin accounts live in /admins, partner accounts in /partners.
+// Shared params for the paginated account lists (Users / Admins): newest
+// registrations first, 10 per page by default, searchable across the columns
+// admins actually look people up by (name, email, phone, college).
+const accountListParams = (req) => {
+  const page = Math.max(1, Math.floor(Number(req.query.page) || 1));
+  const limit = listLimit(req, 10);
+  const search = String(req.query.search || '').trim().slice(0, 100);
+  // Escape LIKE wildcards so "%" in a search stays a literal character.
+  const like = search ? `%${search.replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null;
+  return { page, limit, like };
+};
+
 router.get('/users', authenticateToken, adminOnly, async (req, res) => {
-  const users = await db.all("SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE role = 'student' ORDER BY createdAt DESC LIMIT ?", listLimit(req));
-  res.json({ users: users.map((u) => (u.course ? { ...u, course: u.course.toUpperCase() } : u)) });
+  try {
+    const { page, limit, like } = accountListParams(req);
+    const course = String(req.query.course || '').trim().slice(0, 100);
+
+    const where = ["role = 'student'"];
+    const params = [];
+    if (like) {
+      where.push('(firstName ILIKE ? OR lastName ILIKE ? OR email ILIKE ? OR phone ILIKE ? OR college ILIKE ? OR university ILIKE ?)');
+      params.push(like, like, like, like, like, like);
+    }
+    if (course) { where.push('UPPER(course) = UPPER(?)'); params.push(course); }
+    const whereSql = where.join(' AND ');
+
+    const [countRow, courses] = await Promise.all([
+      db.get(`SELECT COUNT(*) as count FROM users WHERE ${whereSql}`, ...params),
+      db.all("SELECT DISTINCT UPPER(course) as course FROM users WHERE role = 'student' AND course IS NOT NULL AND course <> '' ORDER BY 1"),
+    ]);
+
+    const total = Number(countRow && countRow.count) || 0;
+    const pages = Math.max(1, Math.ceil(total / limit));
+    // Clamp before the row query so an out-of-range page returns the last page
+    // of rows (not an empty one) in the same round trip.
+    const safePage = Math.min(page, pages);
+    const userRows = await db.all(
+      `SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE ${whereSql} ORDER BY createdAt DESC, id DESC LIMIT ? OFFSET ?`,
+      ...params, limit, (safePage - 1) * limit
+    );
+
+    res.json({
+      users: userRows.map((u) => (u.course ? { ...u, course: u.course.toUpperCase() } : u)),
+      total,
+      page: safePage,
+      pages,
+      courses: courses.map((c) => c.course),
+    });
+  } catch (err) {
+    console.error('List users error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Admin accounts (role = 'admin') for the Admins section of the admin panel.
 router.get('/admins', authenticateToken, adminOnly, async (req, res) => {
-  const admins = await db.all("SELECT id, firstName, lastName, email, phone, role, createdAt FROM users WHERE role = 'admin' ORDER BY createdAt DESC LIMIT ?", listLimit(req));
-  res.json({ users: admins });
+  try {
+    const { page, limit, like } = accountListParams(req);
+
+    const where = ["role = 'admin'"];
+    const params = [];
+    if (like) {
+      where.push('(firstName ILIKE ? OR lastName ILIKE ? OR email ILIKE ? OR phone ILIKE ?)');
+      params.push(like, like, like, like);
+    }
+    const whereSql = where.join(' AND ');
+
+    const countRow = await db.get(`SELECT COUNT(*) as count FROM users WHERE ${whereSql}`, ...params);
+    const total = Number(countRow && countRow.count) || 0;
+    const pages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, pages);
+    const rows = await db.all(
+      `SELECT id, firstName, lastName, email, phone, role, createdAt FROM users WHERE ${whereSql} ORDER BY createdAt DESC, id DESC LIMIT ? OFFSET ?`,
+      ...params, limit, (safePage - 1) * limit
+    );
+
+    res.json({ users: rows, total, page: safePage, pages });
+  } catch (err) {
+    console.error('List admins error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Register a student on behalf of the admin, with a chosen registration date

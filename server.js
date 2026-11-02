@@ -258,6 +258,19 @@ if (!process.env.VERCEL) {
   setInterval(sweepPayments, 60 * 1000).unref();
 }
 
+// A rejected promise inside an async route (e.g. a transient DB error) never
+// reaches Express's error middleware — Node's default is to kill the process,
+// which turns one failed request into a full outage (dev server dies; a prod
+// instance dies mid-request and the user sees a timeout). Log and keep serving;
+// the request that triggered it still fails, everything else stays up.
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection (server kept alive):', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception (exiting for restart):', err);
+  process.exit(1);
+});
+
 // Locally: start listening only once the database and brand are ready.
 // On Vercel (see api/index.js) the app is exported instead, no port is
 // opened, and each incoming request waits on the gate above.

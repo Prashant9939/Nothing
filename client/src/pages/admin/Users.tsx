@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { adminApi } from '../../api';
 import { usePopup } from '../../context/PopupContext';
+import Pagination, { PAGE_SIZE, useDebouncedValue } from '../../components/admin/Pagination';
 import type { User } from '../../api';
 
 interface UserDetails {
@@ -16,14 +17,49 @@ export default function AdminUsers() {
   const popup = usePopup();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [fetching, setFetching] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [course, setCourse] = useState('');
+  const [courses, setCourses] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [selectedUser, setSelectedUser] = useState<UserDetails | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
-  useEffect(() => { adminApi.getUsers().then((res) => { setUsers(res.data.users); setLoading(false); }).catch(() => setLoading(false)); }, []);
+  // Debounced server-side search; a new query jumps back to page 1.
+  const search = useDebouncedValue(searchInput);
+  useEffect(() => { setPage(1); }, [search, course]);
 
-  const updateRole = async (id: number, role: string) => { await adminApi.updateUserRole(id, role); setUsers(users.map(u => u.id === id ? { ...u, role } : u)); };
+  useEffect(() => {
+    let cancelled = false;
+    setFetching(true);
+    adminApi.getUsers({ page, limit: PAGE_SIZE, search, course })
+      .then((res) => {
+        if (cancelled) return;
+        setUsers(res.data.users);
+        setTotal(res.data.total);
+        setPages(res.data.pages);
+        setPage(res.data.page); // server clamps (e.g. last page emptied by a delete)
+        if (res.data.courses) setCourses(res.data.courses);
+      })
+      .catch(() => { if (!cancelled) popup.error('Failed to load users. Please try again.', 'Load Failed'); })
+      .finally(() => { if (!cancelled) { setFetching(false); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [page, search, course, refreshKey]);
+
+  const refresh = () => setRefreshKey((k) => k + 1);
+
+  const updateRole = async (id: number, role: string) => {
+    try {
+      await adminApi.updateUserRole(id, role);
+      refresh(); // a promotion moves the row to Admins, so re-pull the page
+    } catch (err: any) {
+      popup.error(err.response?.data?.error || 'Failed to update role. Please try again.', 'Update Failed');
+    }
+  };
 
   const viewUser = async (id: number) => {
     setDetailLoading(true);
@@ -40,27 +76,38 @@ export default function AdminUsers() {
   const deleteUser = async (id: number) => {
     try {
       await adminApi.deleteUser(id);
-      setUsers(users.filter(u => u.id !== id));
       setDeleteConfirm(null);
       if (selectedUser?.user.id === id) setSelectedUser(null);
+      refresh(); // totals and page clamping come from the server
     } catch (err: any) {
       popup.error(err.response?.data?.error || 'Failed to delete user. Please try again.', 'Delete Failed');
     }
   };
 
-  const filtered = users.filter(u => `${u.firstName} ${u.lastName} ${u.email}`.toLowerCase().includes(search.toLowerCase()));
-
   if (loading) return <div className="flex items-center justify-center h-[60vh]"><div className="w-8 h-8 border-2 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-bold text-gray-900">Manage Users</h1><p className="text-sm text-gray-500 mt-1">{users.length} students · admin accounts are in <span className="text-slate-700 font-medium">Admins</span>, partner accounts in <span className="text-slate-700 font-medium">Partners</span></p></div>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users..." className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm w-64 focus:outline-none focus:ring-2 focus:ring-slate-700/20 focus:border-slate-600 transition-all" />
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div><h1 className="text-2xl font-bold text-gray-900">Manage Users</h1><p className="text-sm text-gray-500 mt-1">{total} students · admin accounts are in <span className="text-slate-700 font-medium">Admins</span>, partner accounts in <span className="text-slate-700 font-medium">Partners</span></p></div>
+        <div className="flex items-center gap-3">
+          <select
+            value={course}
+            onChange={(e) => setCourse(e.target.value)}
+            aria-label="Filter by course"
+            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-700/20 focus:border-slate-600 transition-all"
+          >
+            <option value="">All courses</option>
+            {courses.map((c) => (
+              <option key={c} value={c}>{c.toUpperCase()}</option>
+            ))}
+          </select>
+          <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search users..." className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm w-64 focus:outline-none focus:ring-2 focus:ring-slate-700/20 focus:border-slate-600 transition-all" />
+        </div>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <div className={`overflow-x-auto transition-opacity ${fetching ? 'opacity-60' : ''}`}>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
@@ -74,7 +121,12 @@ export default function AdminUsers() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
+              {users.length === 0 && !fetching && (
+                <tr className="border-t border-gray-100">
+                  <td colSpan={7} className="p-8 text-center text-sm text-gray-500">No students match your search.</td>
+                </tr>
+              )}
+              {users.map((u) => (
                 <tr key={u.id} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
                   <td className="p-4 font-medium text-gray-900">{u.firstName} {u.lastName}</td>
                   <td className="p-4 text-gray-500">{u.email}</td>
@@ -107,6 +159,7 @@ export default function AdminUsers() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pages={pages} total={total} noun="students" onPage={setPage} />
       </div>
 
       {/* User Detail Modal */}

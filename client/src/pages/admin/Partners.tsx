@@ -5,6 +5,7 @@ import { adminApi } from '../../api';
 import type { PartnerListItem } from '../../api';
 import { usePopup } from '../../context/PopupContext';
 import NewPartnerModal from '../../components/admin/NewPartnerModal';
+import Pagination, { PAGE_SIZE } from '../../components/admin/Pagination';
 
 const fmtMoney = (n: number) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
@@ -29,6 +30,7 @@ export default function AdminPartners() {
   const [partners, setPartners] = useState<PartnerListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const navigate = useNavigate();
   const popup = usePopup();
@@ -41,6 +43,7 @@ export default function AdminPartners() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => { setPage(1); }, [query]);
 
   const removePartner = async (p: PartnerListItem, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -65,6 +68,12 @@ export default function AdminPartners() {
       `${p.partnerName} ${p.firstName} ${p.lastName} ${p.email}`.toLowerCase().includes(q)
     );
   }, [partners, query]);
+
+  // Client-side pagination: partners stay a small, fully-loaded set (the stats
+  // tiles above always cover every partner), so we just slice the filtered list.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const totals = useMemo(() => ({
     students: partners.reduce((n, p) => n + p.students, 0),
@@ -152,7 +161,7 @@ export default function AdminPartners() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
+                {pageRows.map((p) => (
                   <tr
                     key={p.id}
                     onClick={() => navigate(`/admin/partners/${p.id}`)}
@@ -207,6 +216,7 @@ export default function AdminPartners() {
             </table>
           )}
         </div>
+        <Pagination page={safePage} pages={totalPages} total={filtered.length} noun="partners" onPage={setPage} />
       </div>
 
       <NewPartnerModal
