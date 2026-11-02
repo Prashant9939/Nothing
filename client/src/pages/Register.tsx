@@ -61,9 +61,10 @@ export default function Register() {
 
   const updateField = (field: string, value: string) => setForm({ ...form, [field]: value });
 
-  // The major dropdown is always visible: with a course that has a known list
-  // it narrows to that degree's subjects; otherwise (no course yet, or BCA/MCA/
-  // Other) it shows every subject grouped by degree.
+  // The major dropdown is always visible but stays disabled until a course is
+  // picked ("Select course first"). With a course that has a known list it
+  // narrows to that degree's subjects; BCA/MCA/Other get every subject grouped
+  // by degree (those have no dedicated list).
   const majorOptions = majorsForCourse(form.course);
 
   const isValidDob = (dob: string) => {
@@ -227,9 +228,9 @@ export default function Register() {
             onChange={(e) => {
               const next = e.target.value;
               const opts = majorsForCourse(next);
-              // Keep the chosen major when it still exists in the new options,
-              // otherwise clear it so the student picks a fitting subject.
-              const keep = opts.length === 0 || opts.includes(form.major);
+              // No course → no major at all; otherwise keep the chosen major
+              // only when it still exists in the new course's options.
+              const keep = next !== '' && (opts.length === 0 || opts.includes(form.major));
               setForm({ ...form, course: next, major: keep ? form.major : '' });
             }}
             required
@@ -256,8 +257,14 @@ export default function Register() {
             ))}
           </select>
           </div>
-          <select value={form.major} onChange={(e) => updateField('major', e.target.value)} required className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all">
-            <option value="">Major / Subject *</option>
+          <select
+            value={form.major}
+            onChange={(e) => updateField('major', e.target.value)}
+            disabled={!form.course}
+            required
+            className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all disabled:bg-gray-100/70 disabled:text-gray-500 disabled:opacity-60 disabled:cursor-not-allowed disabled:focus:ring-0"
+          >
+            <option value="">{form.course ? 'Major / Subject *' : 'Select course first *'}</option>
             {majorOptions.length > 0
               ? majorOptions.map((m) => (
                   <option key={m} value={m}>{m}</option>

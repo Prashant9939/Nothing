@@ -1,7 +1,7 @@
 // Major/subject options per degree for the registration form. The dropdown is
-// ALWAYS visible on the Academic step: with no course picked (or a course that
-// has no dedicated list, like BCA/MCA/Other) it shows every subject grouped by
-// degree; once a course with a known list is chosen it narrows to that degree's
+// always visible on the Academic step but disabled until a course is picked;
+// with a course that has no dedicated list (BCA/MCA/Other) it shows every
+// subject grouped by degree, and with a known list it narrows to that degree's
 // subjects (B.A → arts subjects, B.Tech → branches, ...).
 
 const artsSubjects = [
@@ -48,8 +48,9 @@ export const courseMajors: Record<string, string[]> = {
 // Empty array → no dedicated list for this course (BCA, MCA, Other...).
 export const majorsForCourse = (course: string): string[] => courseMajors[course] || [];
 
-// Full list shown before a course is picked (and for courses without a
-// dedicated list), grouped by degree so a long list stays navigable.
+// Full list for courses without a dedicated list (BCA/MCA/Other), grouped by
+// degree so a long list stays navigable. Before a course is picked the dropdown
+// is disabled, so this list only ever renders for a chosen course.
 export const subjectGroups = [
   { label: 'B.A / M.A — Arts', subjects: artsSubjects },
   { label: 'B.Sc / M.Sc — Science', subjects: scienceSubjects },
