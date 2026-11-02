@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { biharUniversities } from '../data/biharUniversities';
+import { majorsForCourse } from '../data/courseMajors';
 import { institutionApi } from '../api';
 import SearchableSelect from '../components/SearchableSelect';
 import AuthSplit from '../components/AuthSplit';
@@ -22,7 +23,7 @@ export default function Register() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     fullName: '', email: '', phone: '', gender: '', dob: '',
-    university: '', college: '', course: '', year: '', rollNo: '', regNo: '',
+    university: '', college: '', course: '', major: '', year: '', rollNo: '', regNo: '',
     guardianName: '', guardianPhone: '', guardianRelation: '',
     password: '', confirmPassword: ''
   });
@@ -60,6 +61,10 @@ export default function Register() {
 
   const updateField = (field: string, value: string) => setForm({ ...form, [field]: value });
 
+  // Subjects belonging to the picked degree (B.A → arts subjects, ...). Empty
+  // for courses without majors (BCA, MCA, Other) → the dropdown stays hidden.
+  const majorOptions = majorsForCourse(form.course);
+
   const isValidDob = (dob: string) => {
     if (!dob || dob.includes('YYYY') || dob.includes('MM') || dob.includes('DD')) return false;
     const d = new Date(dob);
@@ -73,7 +78,8 @@ export default function Register() {
       setStep(2);
     } else if (step === 1) {
       setError('Please fill all fields');
-    } else if (step === 2 && form.university && form.college && form.course && form.year && form.rollNo && form.regNo) {
+    } else if (step === 2 && form.university && form.college && form.course && form.year && form.rollNo && form.regNo
+      && (majorOptions.length === 0 || form.major)) {
       setStep(3);
     } else if (step === 2) {
       setError('Please fill all fields');
@@ -216,7 +222,7 @@ export default function Register() {
             <input type="text" disabled placeholder="Select university first *" className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-500 placeholder-gray-400 transition-all opacity-50 cursor-not-allowed" />
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <select value={form.course} onChange={(e) => updateField('course', e.target.value)} required className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all">
+          <select value={form.course} onChange={(e) => setForm({ ...form, course: e.target.value, major: '' })} required className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all">
             <option value="">Course *</option>
             <option value="ba">B.A</option>
             <option value="bsc">B.Sc</option>
@@ -239,6 +245,14 @@ export default function Register() {
             ))}
           </select>
           </div>
+          {majorOptions.length > 0 && (
+            <select value={form.major} onChange={(e) => updateField('major', e.target.value)} required className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all">
+              <option value="">Major / Subject *</option>
+              {majorOptions.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <input type="text" value={form.rollNo} onChange={(e) => updateField('rollNo', e.target.value)} placeholder="Roll Number *" required className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all" />
             <input type="text" value={form.regNo} onChange={(e) => updateField('regNo', e.target.value)} placeholder="Registration No. *" required className="w-full px-3.5 py-2.5 bg-white/60 border border-gray-200/60 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 transition-all" />

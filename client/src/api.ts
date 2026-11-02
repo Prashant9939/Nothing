@@ -54,6 +54,7 @@ export interface User {
   university: string;
   college: string;
   course: string;
+  major?: string;
   year: string;
   role: string;
   partnerName?: string;

@@ -202,6 +202,12 @@ export default function AdminUsers() {
                         <div className="text-xs text-gray-500">Course</div>
                         <div className="text-sm font-medium text-gray-900">{selectedUser.user.course ? selectedUser.user.course.toUpperCase() : 'N/A'}</div>
                       </div>
+                      {selectedUser.user.major && (
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <div className="text-xs text-gray-500">Major Subject</div>
+                          <div className="text-sm font-medium text-gray-900">{selectedUser.user.major}</div>
+                        </div>
+                      )}
                       <div className="bg-gray-50 rounded-xl p-3">
                         <div className="text-xs text-gray-500">Role</div>
                         <div className="text-sm font-medium text-gray-900 capitalize">{selectedUser.user.role}</div>

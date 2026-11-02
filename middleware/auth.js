@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 
 const USER_COLUMNS = `
-  u.id, u.firstName, u.lastName, u.email, u.phone, u.university, u.college, u.course, u.year,
+  u.id, u.firstName, u.lastName, u.email, u.phone, u.university, u.college, u.course, u.major, u.year,
   u.gender, u.dob, u.rollNo, u.regNo, u.guardianName, u.guardianPhone, u.guardianRelation,
   u.role, u.partnerName, u.accountStatus, u.createdAt
 `;

@@ -445,7 +445,7 @@ router.post('/users', authenticateToken, adminOnly, async (req, res) => {
 });
 
 router.get('/users/:id', authenticateToken, adminOnly, async (req, res) => {
-  const user = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE id = ?', req.params.id);
+  const user = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, major, year, role, createdAt FROM users WHERE id = ?', req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.course) user.course = user.course.toUpperCase();
 

@@ -70,6 +70,7 @@ const publicUser = (u) => ({
   university: u.university || '',
   college: u.college || '',
   course: (u.course || '').toUpperCase(),
+  major: u.major || '',
   year: u.year || '',
   gender: u.gender || '',
   dob: u.dob || '',
@@ -88,7 +89,7 @@ const publicUser = (u) => ({
 router.post('/register', async (req, res) => {
   try {
     const {
-      firstName, lastName, email, phone, university, college, course, year,
+      firstName, lastName, email, phone, university, college, course, major, year,
       password, gender, dob, rollNo, regNo, guardianName, guardianPhone, guardianRelation,
     } = req.body;
 
@@ -114,11 +115,11 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     const result = await db.run(`
-      INSERT INTO users (firstName, lastName, email, phone, university, college, course, year,
+      INSERT INTO users (firstName, lastName, email, phone, university, college, course, major, year,
                          gender, dob, rollNo, regNo, guardianName, guardianPhone, guardianRelation,
                          password, role)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'student')
-    `, firstName, lastName || '', email.toLowerCase(), phone, university, college, course, year,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'student')
+    `, firstName, lastName || '', email.toLowerCase(), phone, university, college, course, major || '', year,
       gender || '', dob || '', rollNo || '', regNo || '',
       guardianName || '', guardianPhone || '', guardianRelation || '',
       hashedPassword);
