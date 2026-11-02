@@ -18,9 +18,22 @@ const authenticateToken = async (req, res, next) => {
     return res.status(401).json({ error: 'Access denied. No token provided.' });
   }
 
+  // Token validity and session liveness are judged in SEPARATE try blocks on
+  // purpose: a database failure (pool exhaustion, dropped socket) must surface
+  // as 503 "try again", never as 401 — the client clears the session on any
+  // 401, so a transient DB blip used to sign every active user out at once
+  // ("session expired" storms during pool saturation).
+  let decoded;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired. Please login again.' });
+    }
+    return res.status(401).json({ error: 'Invalid token. Please login again.' });
+  }
 
+  try {
     // Single round trip: user row + session liveness in one query (the token
     // is unique, so the LEFT JOIN yields at most one row). The LEFT JOIN keeps
     // "user deleted" and "session revoked" distinguishable for the message.
@@ -52,10 +65,8 @@ const authenticateToken = async (req, res, next) => {
     req.token = token;
     next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Token expired. Please login again.' });
-    }
-    return res.status(401).json({ error: 'Invalid token. Please login again.' });
+    console.error('Session lookup failed (database unavailable):', err.message);
+    return res.status(503).json({ error: 'Service temporarily unavailable. Please try again.' });
   }
 };
 

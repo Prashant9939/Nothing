@@ -9,7 +9,14 @@ import { Button } from './ui';
 const IDLE_LIMIT_MS = 15 * 60 * 1000;
 const WARN_MS = 60 * 1000; // countdown warning shown 60s before the logout
 
-const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'touchstart', 'wheel', 'scroll', 'pointermove'] as const;
+const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'touchstart', 'wheel', 'scroll', 'pointermove', 'focus', 'visibilitychange'] as const;
+
+// Razorpay's checkout renders inside a cross-origin iframe (the container div
+// is injected into this document; its events are not). While it is open the
+// user may be deep in UPI/netbanking or switched to their banking app — all
+// invisible to ACTIVITY_EVENTS, so they'd look idle and get signed out
+// mid-payment (verify needs a live session; a captured charge would strand).
+const checkoutOpen = () => !!document.querySelector('.razorpay-container, iframe[src*="razorpay.com"]');
 
 export default function IdleLogout() {
   const { isAuthenticated, logout } = useAuth();
@@ -47,12 +54,21 @@ export default function IdleLogout() {
     clearTimers();
     deadline.current = Date.now() + IDLE_LIMIT_MS;
     warnTimer.current = window.setTimeout(() => {
+      if (checkoutOpen()) return; // mid-payment: no scary countdown — the logout timer polls instead
       setSecondsLeft(Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000)));
       tickTimer.current = window.setInterval(() => {
+        if (checkoutOpen()) { setSecondsLeft(null); return; }
         setSecondsLeft(Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000)));
       }, 250);
     }, IDLE_LIMIT_MS - WARN_MS);
-    logoutTimer.current = window.setTimeout(() => { endSession(); }, IDLE_LIMIT_MS);
+    logoutTimer.current = window.setTimeout(function recheck() {
+      // Keep the original 15-minute deadline honest: while checkout is on
+      // screen re-poll every minute instead of signing out, so closing the
+      // modal either re-arms via parent-side activity or ends the session on
+      // the next poll — never mid-payment.
+      if (checkoutOpen()) { logoutTimer.current = window.setTimeout(recheck, 60 * 1000); return; }
+      endSession();
+    }, IDLE_LIMIT_MS);
   }, [clearTimers, endSession]);
 
   // Re-arming tears down and creates 3 timers — doing that on every

@@ -110,11 +110,27 @@ export default function Payment() {
         theme: { color: '#10b981' },
         // 3. Razorpay signs the result — 4. server verifies the signature
         handler: async (response: any) => {
-          try {
-            await verifyAndComplete(response.razorpay_order_id, response.razorpay_payment_id, response.razorpay_signature);
-          } catch (err: any) {
-            popup.error(err.response?.data?.error || 'Payment could not be verified. Please contact support with your payment id.', 'Verification Failed');
-            setProcessing(false);
+          const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = response;
+          // One automatic retry for transient failures (network blip, cold
+          // start, 5xx, axios timeout): verify is idempotent server-side
+          // (signature check + completed-status guard) and the charge is
+          // already captured here — it must not be stranded by a blip.
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+              await verifyAndComplete(razorpay_order_id, razorpay_payment_id, razorpay_signature);
+              return;
+            } catch (err: any) {
+              const transient = !err.response
+                || [502, 503, 504].includes(err.response?.status)
+                || ['ECONNABORTED', 'ETIMEDOUT'].includes(err.code);
+              if (attempt === 1 && transient) {
+                await new Promise((r) => setTimeout(r, 1500));
+                continue;
+              }
+              popup.error(err.response?.data?.error || 'Payment could not be verified. Please contact support with your payment id.', 'Verification Failed');
+              setProcessing(false);
+              return;
+            }
           }
         },
         modal: { ondismiss: () => setProcessing(false) },

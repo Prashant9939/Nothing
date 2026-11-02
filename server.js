@@ -33,6 +33,14 @@ app.disable('x-powered-by');
 if (process.env.TRUST_PROXY) {
   const tp = process.env.TRUST_PROXY;
   app.set('trust proxy', tp === 'true' ? true : Number(tp) || tp);
+} else if (process.env.VERCEL) {
+  // Vercel's edge forwards X-Forwarded-* on every request. TRUST_PROXY is
+  // defined-but-empty in production, which used to fall through with proxy
+  // trust OFF: req.ip then collapsed to Vercel's internal socket address, so
+  // express-rate-limit counted every user against one shared bucket (global
+  // 429 lockouts on login/auth/general) and req.secure stopped honouring
+  // X-Forwarded-Proto. One hop = the peer that appended the client IP.
+  app.set('trust proxy', 1);
 }
 
 const authLimiter = rateLimit({
