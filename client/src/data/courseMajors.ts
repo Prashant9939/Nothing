@@ -1,8 +1,8 @@
-// Major/subject options per degree for the registration form. When a student
-// picks a course, the "Major / Subject" dropdown lists the subjects that belong
-// to that degree (B.A → arts subjects, B.Tech → branches, ...). Degrees with no
-// meaningful majors (BCA, MCA, Other) are omitted — for those the field simply
-// doesn't appear and isn't required.
+// Major/subject options per degree for the registration form. The dropdown is
+// ALWAYS visible on the Academic step: with no course picked (or a course that
+// has no dedicated list, like BCA/MCA/Other) it shows every subject grouped by
+// degree; once a course with a known list is chosen it narrows to that degree's
+// subjects (B.A → arts subjects, B.Tech → branches, ...).
 
 const artsSubjects = [
   'Hindi', 'English', 'Sanskrit', 'Maithili', 'Urdu',
@@ -45,5 +45,15 @@ export const courseMajors: Record<string, string[]> = {
   mba: managementSubjects,
 };
 
-// Empty array → no major dropdown for this course (BCA, MCA, Other...).
+// Empty array → no dedicated list for this course (BCA, MCA, Other...).
 export const majorsForCourse = (course: string): string[] => courseMajors[course] || [];
+
+// Full list shown before a course is picked (and for courses without a
+// dedicated list), grouped by degree so a long list stays navigable.
+export const subjectGroups = [
+  { label: 'B.A / M.A — Arts', subjects: artsSubjects },
+  { label: 'B.Sc / M.Sc — Science', subjects: scienceSubjects },
+  { label: 'B.Com / M.Com — Commerce', subjects: commerceSubjects },
+  { label: 'B.Tech / B.E / M.Tech — Engineering', subjects: engineeringBranches },
+  { label: 'MBA — Management', subjects: managementSubjects },
+];
