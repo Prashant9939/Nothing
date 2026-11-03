@@ -11,13 +11,11 @@ import { CheckIcon } from "@animateicons/react/lucide";
 import { XIcon } from "@animateicons/react/lucide";
 import { MailIcon } from "@animateicons/react/lucide";
 import { PhoneIcon } from "@animateicons/react/lucide";
-import { FileTextIcon } from "@animateicons/react/lucide";
-import { BookOpenIcon } from "@animateicons/react/lucide";
 import { LockIcon } from "@animateicons/react/lucide";
 
 export default function ForgotPassword() {
   const [step, setStep] = useState(1);
-  const [ident, setIdent] = useState({ email: '', phone: '', regNo: '', rollNo: '' });
+  const [ident, setIdent] = useState({ email: '', phone: '' });
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -34,8 +32,8 @@ export default function ForgotPassword() {
   const handleVerify = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!ident.email || !ident.phone || !ident.regNo || !ident.rollNo) {
-      setError('Please fill all four details'); return;
+    if (!ident.email || !ident.phone) {
+      setError('Please enter your registered email and phone number'); return;
     }
     setLoading(true);
     try {
@@ -167,38 +165,8 @@ export default function ForgotPassword() {
                 />
               </div>
             </div>
-            <div>
-              <label htmlFor="fp-regno" className="block text-sm font-medium text-gray-700 mb-1.5">Registration number</label>
-              <div className="relative">
-                <FileTextIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                <input
-                  id="fp-regno"
-                  type="text"
-                  value={ident.regNo}
-                  onChange={(e) => set('regNo', e.target.value)}
-                  placeholder="Reg. number *"
-                  required
-                  className={`${inputBase} pr-4`}
-                />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="fp-rollno" className="block text-sm font-medium text-gray-700 mb-1.5">Roll number</label>
-              <div className="relative">
-                <BookOpenIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                <input
-                  id="fp-rollno"
-                  type="text"
-                  value={ident.rollNo}
-                  onChange={(e) => set('rollNo', e.target.value)}
-                  placeholder="Roll number *"
-                  required
-                  className={`${inputBase} pr-4`}
-                />
-              </div>
-            </div>
           </div>
-          <p className="text-xs text-gray-500">Enter all four details exactly as registered. They must all match your account.</p>
+          <p className="text-xs text-gray-500">Enter the email and phone number registered to your account. Both must match to continue.</p>
           <button
             type="submit"
             disabled={loading}

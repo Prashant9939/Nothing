@@ -282,8 +282,8 @@ router.get('/check', authenticateToken, async (req, res) => {
 });
 
 // ===================== FORGOT PASSWORD =====================
-// Finds a user only when ALL FOUR registered details match
-async function findUserByIdentity({ email, phone, regNo, rollNo }) {
+// Finds a user only when BOTH registered details (email + phone) match
+async function findUserByIdentity({ email, phone }) {
   const e = String(email).trim().toLowerCase();
   const user = await db.get('SELECT * FROM users WHERE lower(trim(email)) = ?', e);
   if (!user) return null;
@@ -294,21 +294,19 @@ async function findUserByIdentity({ email, phone, regNo, rollNo }) {
     return p;
   };
   if (normPhone(user.phone) !== normPhone(phone)) return null;
-  if (String(user.regNo || '').trim().toLowerCase() !== String(regNo || '').trim().toLowerCase()) return null;
-  if (String(user.rollNo || '').trim().toLowerCase() !== String(rollNo || '').trim().toLowerCase()) return null;
   return user;
 }
 
-// Step 1: verify the account by all four registered details
+// Step 1: verify the account by registered email + phone number
 router.post('/forgot-password', recoveryLimiter, async (req, res) => {
   try {
-    const { email, phone, regNo, rollNo } = req.body;
-    if (!email || !phone || !regNo || !rollNo) {
-      return res.status(400).json({ error: 'Email, phone, registration number and roll number are all required' });
+    const { email, phone } = req.body;
+    if (!email || !phone) {
+      return res.status(400).json({ error: 'Email and phone number are both required' });
     }
-    const user = await findUserByIdentity({ email, phone, regNo, rollNo });
+    const user = await findUserByIdentity({ email, phone });
     if (!user) {
-      return res.status(404).json({ error: 'No account matches all of these details. Check each field and try again.' });
+      return res.status(404).json({ error: 'No account matches this email and phone number. Check both fields and try again.' });
     }
     res.json({ message: 'Identity verified. You can now set a new password.' });
   } catch (err) {
@@ -320,9 +318,9 @@ router.post('/forgot-password', recoveryLimiter, async (req, res) => {
 // Step 2: set the new password after the same identity check
 router.post('/reset-password', recoveryLimiter, async (req, res) => {
   try {
-    const { email, phone, regNo, rollNo, newPassword, confirmPassword } = req.body;
-    if (!email || !phone || !regNo || !rollNo) {
-      return res.status(400).json({ error: 'Identity details are required' });
+    const { email, phone, newPassword, confirmPassword } = req.body;
+    if (!email || !phone) {
+      return res.status(400).json({ error: 'Email and phone number are both required' });
     }
     if (!newPassword || !confirmPassword) {
       return res.status(400).json({ error: 'Both password fields are required' });
@@ -335,9 +333,9 @@ router.post('/reset-password', recoveryLimiter, async (req, res) => {
       return res.status(400).json({ error: policyError });
     }
 
-    const user = await findUserByIdentity({ email, phone, regNo, rollNo });
+    const user = await findUserByIdentity({ email, phone });
     if (!user) {
-      return res.status(404).json({ error: 'No account matches all of these details. Check each field and try again.' });
+      return res.status(404).json({ error: 'No account matches this email and phone number. Check both fields and try again.' });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_COST);

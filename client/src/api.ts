@@ -248,9 +248,9 @@ export const authApi = {
   checkSession: () => api.get<{ valid: boolean; user: User }>('/auth/check'),
   verifyCertificate: (certificateId: string) => api.post('/auth/verify-certificate', { certificateId }),
   getInternships: () => api.get<{ internships: Internship[] }>('/auth/internships'),
-  forgotPassword: (data: { email: string; phone: string; regNo: string; rollNo: string }) =>
+  forgotPassword: (data: { email: string; phone: string }) =>
     api.post('/auth/forgot-password', data),
-  resetPassword: (data: { email: string; phone: string; regNo: string; rollNo: string; newPassword: string; confirmPassword: string }) =>
+  resetPassword: (data: { email: string; phone: string; newPassword: string; confirmPassword: string }) =>
     api.post('/auth/reset-password', data),
 };
 
