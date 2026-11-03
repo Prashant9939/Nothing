@@ -846,7 +846,7 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
 router.get('/download/project-report/:enrollmentId', authenticateToken, async (req, res) => {
   const enrollment = await db.get(`
     SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, u.year,
-           u.rollNo, u.regNo, u.university,
+           u.rollNo, u.regNo, u.university, u.major,
            i.title as internshipTitle, i.topics, i.duration, i.modules, i.category, i.description
     FROM enrollments e
     JOIN users u ON e.userId = u.id
@@ -867,7 +867,6 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
     db.get('SELECT * FROM internships WHERE id = ?', enrollment.internshipId),
     ensureEnrollmentNumber(db, enrollment, 'reportNo'),
   ]);
-  const siteLabel = siteUrl() || VERIFY_BASE;
 
   let completedIdx = [];
   try { completedIdx = JSON.parse(enrollment.completedModules || '[]'); } catch (e) { completedIdx = []; }
@@ -878,31 +877,27 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
   }));
 
   const content = getReportContent(internship.category, internship);
-  const qrBuffer = await makeQr(reportNo);
-  const duration = enrollment.duration || 30;
   const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : 'N/A';
 
   const meta = {
-    trackLabel: content.trackLabel || enrollment.internshipTitle,
     programTitle: enrollment.internshipTitle,
-    companyName: companyName(),
-    companyAddress: companyAddress(),
-    siteLabel: siteLabel || VERIFY_BASE,
-    dateLabel: `Issued: ${fmt(new Date())}`,
     reportNo,
     studentName: `${enrollment.firstName} ${enrollment.lastName}`,
-    duration,
-    modulesLabel: modules.length ? `${modules.length} modules` : `${enrollment.modules || 'multiple'} modules`,
     institution: enrollment.college || 'N/A',
-    grade: cert ? `${cert.grade} (${cert.score}%)` : (exam && exam.score != null ? `${exam.score}%` : 'In progress'),
     enrolledLabel: fmt(enrollment.enrolledAt),
-    qrBuffer,
+    // Academic cover fields — the cover follows the university submission
+    // template (logo circle, submitted-to/by blocks, IPO stamp area).
+    university: enrollment.university || '',
+    course: enrollment.course || '',
+    major: enrollment.major || '',
+    regNo: enrollment.regNo || '',
+    rollNo: enrollment.rollNo || '',
+    session: enrollment.year || '',
   };
 
   await streamReport(res, {
     filename: `internship-report-${reportNo}.pdf`,
     reportNo,
-    qrBuffer,
     enrollment,
     cert,
     exam,
