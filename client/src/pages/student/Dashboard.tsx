@@ -411,7 +411,7 @@ function buildSteps({ primary, payments, exams, certificates }: {
     {
       title: 'Complete payment',
       desc: paid ? `Paid${payment?.receiptNumber ? ` · ${payment.receiptNumber}` : ''}` : 'Unlock learning and documents',
-      to: pendingPayment ? `/student/pay/${pendingPayment.id}` : '/student/select-track',
+      to: pendingPayment ? `/student/pay/${pendingPayment.linkToken || pendingPayment.id}` : '/student/select-track',
       cta: 'Complete Payment',
       icon: <WalletIcon size={15} />,
       done: paid,

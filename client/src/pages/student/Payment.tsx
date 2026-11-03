@@ -44,7 +44,19 @@ export default function Payment() {
     setLoading(true);
     setLoadError(false);
     studentApi.getDashboard().then((res) => {
-      const p = res.data.payments.find((pay: Payment) => pay.id === Number(paymentId));
+      // The URL param is the opaque linkToken for new links; legacy
+      // /student/pay/<number> links (sequential payment id) still resolve.
+      const ref = String(paymentId ?? '');
+      const numeric = /^\d+$/.test(ref);
+      const p = res.data.payments.find((pay: Payment) =>
+        (pay.linkToken && pay.linkToken === ref) || (numeric && pay.id === Number(ref)));
+      if (p?.linkToken && numeric && p.linkToken !== ref) {
+        // Swap the sequential id out of the address bar so the public URL
+        // never shows how many payments the site has; the param change
+        // re-runs load() with the token.
+        navigate(`/student/pay/${p.linkToken}`, { replace: true });
+        return;
+      }
       setPayment(p || null);
       setLoading(false);
     }).catch(() => {

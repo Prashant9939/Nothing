@@ -46,7 +46,7 @@ export default function SelectTrack() {
     setEnrolling(true);
     try {
       const res = await studentApi.enroll(selected);
-      navigate(`/student/pay/${res.data.payment.id}`);
+      navigate(`/student/pay/${res.data.payment.linkToken || res.data.payment.id}`);
     } catch (err: any) {
       popup.error(err.response?.data?.error || 'Enrollment failed. Please try again.', 'Enrollment Failed');
       setEnrolling(false);

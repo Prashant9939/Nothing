@@ -385,10 +385,13 @@ router.post('/enroll', authenticateToken, async (req, res) => {
   }
 
   const receiptNumber = await newReceiptNumber(db);
+  // Opaque token for the shareable payment link — the URL must not expose
+  // the sequential payment id (a running count of payments on the site).
+  const linkToken = crypto.randomBytes(9).toString('base64url');
   const insertInvoice = () => db.run(`
-    INSERT INTO payments (userId, enrollmentId, internshipId, amount, receiptNumber, status, expiresAt)
-    VALUES (?, NULL, ?, ?, ?, ?, to_char(now() at time zone 'UTC' + (? || ' minutes')::interval, 'YYYY-MM-DD HH24:MI:SS'))
-  `, req.user.id, internshipId, internship.price, receiptNumber, 'pending', String(paymentTimeLimitMinutes()));
+    INSERT INTO payments (userId, enrollmentId, internshipId, amount, receiptNumber, status, expiresAt, linkToken)
+    VALUES (?, NULL, ?, ?, ?, ?, to_char(now() at time zone 'UTC' + (? || ' minutes')::interval, 'YYYY-MM-DD HH24:MI:SS'), ?)
+  `, req.user.id, internshipId, internship.price, receiptNumber, 'pending', String(paymentTimeLimitMinutes()), linkToken);
 
   let paymentResult;
   try {

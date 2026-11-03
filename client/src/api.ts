@@ -106,6 +106,9 @@ export interface Payment {
   receiptNumber: string;
   paidAt: string;
   expiresAt?: string | null;
+  // Opaque public-link token — /student/pay/<linkToken> instead of the
+  // sequential row id (legacy numeric links still resolve and redirect).
+  linkToken?: string | null;
   createdAt: string;
   internshipTitle?: string;
   firstName?: string;

@@ -480,6 +480,9 @@ const migrations = [
   // Invoice-before-enrollment flow: payments start with no enrollmentId
   // (SQLite always allowed NULL here; PG was created NOT NULL by mistake).
   'ALTER TABLE payments ALTER COLUMN enrollmentId DROP NOT NULL',
+  // Opaque token for the shareable /student/pay/ link — keeps the
+  // sequential payment row id (a running count of payments) out of the URL.
+  'ALTER TABLE payments ADD COLUMN IF NOT EXISTS linkToken TEXT',
   // Exam attempts record the exact questions served so grading uses the
   // served set as denominator, not every active question in the track.
   'ALTER TABLE exams ADD COLUMN IF NOT EXISTS servedQuestionIds TEXT',
@@ -595,6 +598,15 @@ const BACKFILL_SQL = {
     ON payments (userId, internshipId) WHERE status = 'pending'
   `,
   legacyReceipts: "SELECT id FROM payments WHERE receiptNumber IS NULL OR receiptNumber NOT LIKE 'IQI-REC-____-______'",
+  // Public payment links must not expose the sequential row id (a running
+  // count of payments on the site) — give every existing invoice an opaque
+  // token. random() + clock_timestamp() are per-row volatile and id salts
+  // each row, so the 16 hex chars stay unique even if random() repeats.
+  linkTokens: `
+    UPDATE payments
+    SET linkToken = substr(md5(random()::text || id::text || clock_timestamp()::text), 1, 16)
+    WHERE linkToken IS NULL
+  `,
 };
 const { DOC_COLUMNS, makeNumber, newReceiptNumber } = require('./lib/docNumbers');
 
@@ -646,6 +658,14 @@ if (appliedVersion !== SCHEMA_VERSION) {
     await db.run(BACKFILL_SQL.expireSweep);
   } catch (err) {
     console.error('Payment expiry backfill failed:', err.message);
+  }
+
+  // Existing invoices get an opaque link token so /student/pay/ URLs never
+  // show the sequential payment id.
+  try {
+    await db.run(BACKFILL_SQL.linkTokens);
+  } catch (err) {
+    console.error('Payment link-token backfill failed:', err.message);
   }
 
   // One open invoice per (user, track). The enroll route already reuses pending

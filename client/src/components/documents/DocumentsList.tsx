@@ -139,7 +139,7 @@ export default function DocumentsList() {
             description={`Your ${hiddenCount > 1 ? 'programs are' : 'program is'} awaiting payment. Complete the payment to access receipts, offer letters, reports and certificates.`}
             action={
               pending
-                ? <Link to={`/student/pay/${pending.id}`} className={primaryLink}>Complete Payment</Link>
+                ? <Link to={`/student/pay/${pending.linkToken || pending.id}`} className={primaryLink}>Complete Payment</Link>
                 : <Link to="/student/select-track" className={primaryLink}>Select a Track</Link>
             }
           />
