@@ -130,7 +130,7 @@ router.post('/payout-request', authenticateToken, partnerOnly, async (req, res) 
 router.post('/students', authenticateToken, partnerOnly, async (req, res) => {
   try {
     const {
-      firstName, lastName, email, phone, university, college, course, year,
+      firstName, lastName, email, phone, university, college, course, major, year,
       password, gender, dob, rollNo, regNo, guardianName, guardianPhone, guardianRelation,
     } = req.body;
 
@@ -162,11 +162,12 @@ router.post('/students', authenticateToken, partnerOnly, async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     const result = await db.run(`
-      INSERT INTO users (firstName, lastName, email, phone, university, college, course, year,
+      INSERT INTO users (firstName, lastName, email, phone, university, college, course, major, year,
                          gender, dob, rollNo, regNo, guardianName, guardianPhone, guardianRelation,
                          password, role, partnerId, createdByAdmin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'student', ?, 1)
-    `, firstName, lastName || '', normalized, phone, university, college, course, year,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'student', ?, 1)
+    `, firstName, lastName || '', normalized, phone, university, college, course,
+      major || '', year,
       gender || '', dob || '', rollNo || '', regNo || '',
       guardianName || '', guardianPhone || '', guardianRelation || '',
       hashedPassword, req.user.id);

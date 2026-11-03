@@ -7,6 +7,7 @@ import SearchableSelect from '../SearchableSelect';
 import PasswordHints from '../ui/PasswordHints';
 import { passwordPolicyError } from '../../passwordPolicy';
 import { biharUniversities } from '../../data/biharUniversities';
+import { majorsForCourse, subjectGroups } from '../../data/courseMajors';
 
 interface Props {
   open: boolean;
@@ -29,7 +30,7 @@ const sessionOptions = Array.from({ length: 8 }, (_, i) => {
 const emptyForm = {
   registeredAt: new Date().toISOString().slice(0, 10),
   fullName: '', email: '', phone: '', gender: '', dob: '',
-  university: '', college: '', course: '', year: '', rollNo: '', regNo: '',
+  university: '', college: '', course: '', major: '', year: '', rollNo: '', regNo: '',
   guardianName: '', guardianPhone: '', guardianRelation: '',
   password: '', confirmPassword: '',
 };
@@ -55,6 +56,7 @@ export default function NewRegistrationModal({ open, onClose, onCreated }: Props
 
   const set = (field: string, value: string) => setForm({ ...form, [field]: value });
   const today = new Date().toISOString().slice(0, 10);
+  const majorOptions = majorsForCourse(form.course);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -63,7 +65,7 @@ export default function NewRegistrationModal({ open, onClose, onCreated }: Props
     if (!form.fullName.trim() || !form.email || !form.phone || !form.gender || !form.dob) {
       setError('Please fill all personal details'); return;
     }
-    if (!form.university || !form.college || !form.course || !form.year || !form.rollNo || !form.regNo) {
+    if (!form.university || !form.college || !form.course || !form.major || !form.year || !form.rollNo || !form.regNo) {
       setError('Please fill all academic details'); return;
     }
     if (!form.guardianName || !form.guardianPhone || !form.guardianRelation) {
@@ -183,7 +185,18 @@ export default function NewRegistrationModal({ open, onClose, onCreated }: Props
                 <input type="text" disabled placeholder="Select university first *" className={inputCls + ' opacity-50 cursor-not-allowed'} />
               )}
               <div className="grid grid-cols-2 gap-3">
-                <select value={form.course} onChange={(e) => set('course', e.target.value)} className={selectCls}>
+                <select
+                  value={form.course}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    const opts = majorsForCourse(next);
+                    // No course → no major; keep the chosen major only when it
+                    // still exists in the new course's options.
+                    const keep = next !== '' && (opts.length === 0 || opts.includes(form.major));
+                    setForm({ ...form, course: next, major: keep ? form.major : '' });
+                  }}
+                  className={selectCls}
+                >
                   <option value="">Course *</option>
                   <option value="ba">B.A</option>
                   <option value="bsc">B.Sc</option>
@@ -206,6 +219,25 @@ export default function NewRegistrationModal({ open, onClose, onCreated }: Props
                   ))}
                 </select>
               </div>
+              <select
+                value={form.major}
+                onChange={(e) => set('major', e.target.value)}
+                disabled={!form.course}
+                className={selectCls + ' disabled:bg-gray-100/70 disabled:text-gray-500 disabled:opacity-60 disabled:cursor-not-allowed disabled:focus:ring-0'}
+              >
+                <option value="">{form.course ? 'Major / Subject *' : 'Select course first *'}</option>
+                {majorOptions.length > 0
+                  ? majorOptions.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))
+                  : subjectGroups.map((g) => (
+                      <optgroup key={g.label} label={g.label}>
+                        {g.subjects.map((m) => (
+                          <option key={`${g.label}-${m}`} value={m}>{m}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+              </select>
               <div className="grid grid-cols-2 gap-3">
                 <input type="text" value={form.rollNo} onChange={(e) => set('rollNo', e.target.value)} placeholder="Roll Number *" className={inputCls} />
                 <input type="text" value={form.regNo} onChange={(e) => set('regNo', e.target.value)} placeholder="Registration No. *" className={inputCls} />
