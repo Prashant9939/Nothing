@@ -6,6 +6,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { completePayment, expirePendingPayments } = require('../lib/payments');
 const { refreshBrand } = require('../lib/documentBrand');
 const { streamAnswerKey } = require('../lib/answerKeyPdf');
+const { markCourseComplete } = require('../lib/courseProgress');
 const { passwordPolicyError, BCRYPT_COST } = require('../lib/passwordPolicy');
 const { makeTtlCache } = require('../lib/ttlCache');
 
@@ -684,6 +685,11 @@ const applyResult = async (exam, score, status) => {
   const existingCert = await db.get('SELECT id FROM certificates WHERE enrollmentId = ?', exam.enrollmentId);
   const paid = !!(await db.get("SELECT 1 FROM payments WHERE enrollmentId = ? AND status = 'completed' LIMIT 1", exam.enrollmentId));
 
+  // Admin-approved passing marks finish the course regardless of payment:
+  // every module checked off and attendance at 100% (payment gates the
+  // certificate below, not the course/attendance display).
+  if (status === 'completed') await markCourseComplete(exam.enrollmentId);
+
   if (status === 'completed' && paid) {
     if (!existingCert) {
       let certId;
@@ -831,6 +837,8 @@ router.put('/certificates/:id/marks', authenticateToken, adminOnly, async (req, 
   if (status === 'completed') {
     await db.run('UPDATE certificates SET score = ?, grade = ? WHERE id = ?', rounded, gradeFor(rounded), cert.id);
     await db.run("UPDATE enrollments SET status = 'completed' WHERE id = ?", cert.enrollmentId);
+    // Passing marks = course finished: all modules completed + 100% attendance.
+    await markCourseComplete(cert.enrollmentId);
     const updated = await db.get('SELECT * FROM certificates WHERE id = ?', cert.id);
     return res.json({ message: `Marks updated to ${rounded}% (${updated.grade})`, certificate: updated });
   }
