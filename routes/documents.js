@@ -22,6 +22,7 @@ const { getReportContent } = require('../data/reportContent');
 const { streamReport } = require('../lib/reportPdf');
 const { streamForm, ALLOWED_TYPES: FORM_TYPES } = require('./forms');
 const { authenticateToken } = require('../middleware/auth');
+const { resolveVerifyBase } = require('../lib/verifyBase');
 
 const router = express.Router();
 
@@ -155,13 +156,13 @@ const GOLD = '#D4AF37';
 // report renderer uses the exact same strings (name | address | CIN).
 
 // ===================== QR VERIFICATION =====================
-const VERIFY_BASE = (process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, '');
-
-// Builds the QR pointing at the public verification page for a document reference
+// Builds the QR pointing at the public verification page for a document reference.
+// The origin comes from lib/verifyBase so a blank setting or a preview-domain
+// SITE_URL can never put a dead link on a document.
 async function makeQr(ref) {
   try {
     const QRCode = require('qrcode');
-    const base = (siteUrl() || VERIFY_BASE).replace(/\/+$/, '');
+    const base = resolveVerifyBase(siteUrl());
     return await QRCode.toBuffer(`${base}/certification?id=${encodeURIComponent(ref)}`, {
       margin: 1, width: 280, color: { dark: '#1C6954', light: '#FFFFFF' },
     });
@@ -677,7 +678,7 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
 
   // QR badge + plain-text verify URL. Raised to y32 so the captions clear
   // the centered footText line below (they used to overlap).
-  const siteBase = (siteUrl() || VERIFY_BASE).replace(/\/+$/, '');
+  const siteBase = resolveVerifyBase(siteUrl());
   drawQrBadge(doc, qrBuffer, 456, 32, 62, { url: `${siteBase}/certification` });
 
   // Serif title for a traditional certificate feel

@@ -80,12 +80,12 @@ function drawFooter(doc) {
 
 // QR pointing at the public verification page — keeps the shared disclaimer
 // ("scan the QR code of this document") accurate on forms too.
-const VERIFY_BASE = (process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, '');
+const { resolveVerifyBase } = require('../lib/verifyBase');
 
 async function makeVerifyQr() {
   try {
     const QRCode = require('qrcode');
-    const base = (siteUrl() || VERIFY_BASE).replace(/\/+$/, '');
+    const base = resolveVerifyBase(siteUrl());
     return await QRCode.toBuffer(`${base}/certification`, {
       margin: 1, width: 240, color: { dark: INK, light: '#FFFFFF' },
     });

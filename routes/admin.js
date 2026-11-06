@@ -6,6 +6,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { completePayment, expirePendingPayments, makeAdminTransactionId } = require('../lib/payments');
 const rzp = require('../lib/razorpay');
 const { refreshBrand } = require('../lib/documentBrand');
+const { resolveVerifyBase } = require('../lib/verifyBase');
 const { streamAnswerKey } = require('../lib/answerKeyPdf');
 const { markCourseComplete } = require('../lib/courseProgress');
 const { passwordPolicyError, BCRYPT_COST } = require('../lib/passwordPolicy');
@@ -529,8 +530,14 @@ const { getAllSettings, setSettings } = require('../lib/settings');
 
 const SETTING_KEYS = ['attendanceDateMode', 'companyName', 'companyAddress', 'companyCin', 'directorName', 'siteUrl'];
 
+// The admin preview must show the origin the server will really embed in a QR.
+// Guessing from window.location.origin is what hid a wrong SITE_URL behind a
+// correct-looking preview: the page said iqintern.in while the QR said
+// *.vercel.app.
+const withVerifyBase = (settings) => ({ ...settings, verifyBase: resolveVerifyBase(settings.siteUrl) });
+
 router.get('/settings', authenticateToken, adminOnly, async (req, res) => {
-  res.json({ settings: await getAllSettings(db) });
+  res.json({ settings: withVerifyBase(await getAllSettings(db)) });
 });
 
 // Partial update: only keys present in the body are written
@@ -558,7 +565,7 @@ router.put('/settings', authenticateToken, adminOnly, async (req, res) => {
   await setSettings(db, updates);
   // Both read the just-written state — run them together (2 RTTs → 1 wave)
   const [, settings] = await Promise.all([refreshBrand(), getAllSettings(db)]);
-  res.json({ message: 'Settings updated', settings });
+  res.json({ message: 'Settings updated', settings: withVerifyBase(settings) });
 });
 
 // ===================== PAYMENTS MANAGEMENT =====================

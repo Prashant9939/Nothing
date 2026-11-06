@@ -9,6 +9,8 @@ interface SettingsData {
   companyCin: string;
   directorName: string;
   siteUrl: string;
+  /** Origin the server will really embed in new QR codes (computed server-side). */
+  verifyBase?: string;
 }
 
 const inputCls =
@@ -69,7 +71,11 @@ export default function AdminSettings() {
     settings.companyCin !== initial.companyCin ||
     settings.directorName !== initial.directorName;
   const verifyDirty = settings.siteUrl !== initial.siteUrl;
-  const verifyBase = (settings.siteUrl || window.location.origin).replace(/\/+$/, '');
+  // Preview follows what is being typed; when the field is blank it shows the
+  // origin the SERVER will use. Falling back to window.location.origin here is
+  // what hid a wrong SITE_URL behind a preview that looked correct.
+  const typedBase = settings.siteUrl.trim().replace(/\/+$/, '');
+  const verifyBase = typedBase || (initial.verifyBase || window.location.origin).replace(/\/+$/, '');
 
   const dateOptions: { value: 'forward' | 'backward'; title: string; desc: string }[] = [
     {
@@ -243,7 +249,8 @@ export default function AdminSettings() {
             placeholder="https://your-domain.example"
           />
           <p className="text-xs text-gray-500 mt-2">
-            Leave blank to use the default from <span className="font-mono">SITE_URL</span> / localhost. QR preview:{' '}
+            Leave blank to use the server default (production always uses a real public domain — never
+            localhost). QR preview:{' '}
             <span className="font-mono text-gray-600 break-all">{verifyBase}/certification?id=…</span>
           </p>
         </div>
