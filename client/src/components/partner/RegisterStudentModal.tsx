@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { ArrowLeft, Check, CheckCircle2, CreditCard, X } from 'lucide-react';
 import { EyeIcon, EyeOffIcon } from '@animateicons/react/lucide';
 import { institutionApi, partnerApi } from '../../api';
+import type { Internship, Payment } from '../../api';
+import { useAuth } from '../../context/AuthContext';
 import { usePopup } from '../../context/PopupContext';
 import SearchableSelect from '../SearchableSelect';
 import PasswordHints from '../ui/PasswordHints';
@@ -46,14 +48,57 @@ const isValidDob = (dob: string) => {
   return !isNaN(d.getTime()) && d < new Date();
 };
 
+// Loads checkout.razorpay.com once and resolves when it is ready to use
+// (same helper as the student payment page).
+function loadRazorpayCheckout(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).Razorpay) return resolve();
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Could not load Razorpay checkout'));
+    document.body.appendChild(script);
+  });
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  web: 'Web Development', python: 'Python', data: 'Data Science', ai: 'AI/ML',
+  cyber: 'Cybersecurity', skill: 'Skill Development', teaching: 'Teacher Training',
+  hr: 'Human Resource', entrepreneurship: 'Entrepreneurship',
+  tourism: 'Tourism & Hospitality', marketing: 'Marketing', finance: 'Finance',
+  design: 'Design', other: 'Other',
+};
+
+const categoryLabel = (key: string) => CATEGORY_LABELS[key] || key;
+
 export default function RegisterStudentModal({ open, onClose, onCreated }: Props) {
   const popup = usePopup();
+  const { user } = useAuth();
   const [form, setForm] = useState(emptyForm);
   const [universities, setUniversities] = useState<{ name: string; shortName: string; colleges: { name: string; district: string }[] }[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [terms, setTerms] = useState(false);
+
+  // Step 2: pick a track and pay for the student that was just registered.
+  const [step, setStep] = useState(1);
+  const [student, setStudent] = useState<{ id: number; name: string; email: string; password: string } | null>(null);
+  const [tracks, setTracks] = useState<Internship[]>([]);
+  const [tracksLoading, setTracksLoading] = useState(false);
+  const [tracksError, setTracksError] = useState(false);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [paidPayment, setPaidPayment] = useState<Payment | null>(null);
+
+  const loadTracks = () => {
+    setTracksLoading(true);
+    setTracksError(false);
+    partnerApi.getInternships()
+      .then((res) => { setTracks(res.data.internships || []); setTracksLoading(false); })
+      .catch(() => { setTracksError(true); setTracksLoading(false); });
+  };
 
   useEffect(() => {
     if (!open || universities.length > 0) return;
@@ -67,10 +112,10 @@ export default function RegisterStudentModal({ open, onClose, onCreated }: Props
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !loading) onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !loading && !paying) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, loading, onClose]);
+  }, [open, loading, paying, onClose]);
 
   if (!open) return null;
 
@@ -88,6 +133,8 @@ export default function RegisterStudentModal({ open, onClose, onCreated }: Props
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    // Only step 1 is a form — Enter anywhere else must not re-run validation.
+    if (step !== 1) return;
 
     if (!form.fullName.trim() || !form.email || !form.phone || !form.gender || !isValidDob(form.dob)) {
       setError('Please fill all personal details'); return;
@@ -110,16 +157,24 @@ export default function RegisterStudentModal({ open, onClose, onCreated }: Props
     try {
       const { confirmPassword: _confirmPassword, fullName, ...rest } = form;
       const nameParts = fullName.trim().split(/\s+/);
-      await partnerApi.registerStudent({ ...rest, firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') });
-      popup.success(
-        `${fullName} is registered and attributed to your partner account. Share these credentials so they can sign in: ${form.email} / ${form.password}`,
-        'Student Registered'
-      );
+      const res = await partnerApi.registerStudent({ ...rest, firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') });
+
+      // Step 1 is done — refresh the list behind the modal, then move straight
+      // to track selection instead of closing.
+      setStudent({
+        id: res.data.user.id,
+        name: fullName.trim(),
+        email: form.email,
+        password: form.password,
+      });
       setForm(emptyForm);
       setTerms(false);
       setShowPassword(false);
+      setError('');
       onCreated();
-      onClose();
+      setStep(2);
+      loadTracks();
+      popup.success(`${fullName} is registered. Now choose a track to enroll them.`, 'Student Registered');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed');
     } finally {
@@ -127,19 +182,124 @@ export default function RegisterStudentModal({ open, onClose, onCreated }: Props
     }
   };
 
+  // Step 2 → Razorpay. The order is created server-side with the amount from
+  // the database; the client only ever passes back Razorpay's signed result.
+  const selectedTrack = tracks.find((t) => t.id === selected) || null;
+
+  const handlePay = async () => {
+    if (!student || !selectedTrack || paying) return;
+    setPaying(true);
+    try {
+      const { data } = await partnerApi.enrollStudent(student.id, selectedTrack.id);
+
+      if (data.alreadyPaid) {
+        setPaidPayment(data.payment);
+        setStep(3);
+        setPaying(false);
+        return;
+      }
+
+      if (!data.orderId || !data.keyId) {
+        popup.error('Payment service is not configured. Restart the server so it picks up your Razorpay keys from .env.', 'Payment Not Configured');
+        setPaying(false);
+        return;
+      }
+
+      await loadRazorpayCheckout();
+      const rzp = new (window as any).Razorpay({
+        key: data.keyId,
+        order_id: data.orderId,
+        amount: data.amount,
+        currency: data.currency,
+        name: 'IQ Intern',
+        description: selectedTrack.title,
+        prefill: {
+          name: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
+          email: user?.email || '',
+          contact: (user as any)?.phone || '',
+        },
+        theme: { color: '#10b981' },
+        handler: async (response: any) => {
+          const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = response;
+          // One automatic retry for a transient blip — verify is idempotent
+          // server-side and the charge is already captured here.
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+              const verified = await partnerApi.verifyStudentPayment(data.payment.id, {
+                razorpay_order_id, razorpay_payment_id, razorpay_signature,
+              });
+              setPaidPayment(verified.data.payment);
+              setStep(3);
+              setPaying(false);
+              return;
+            } catch (err: any) {
+              const transient = !err.response
+                || [502, 503, 504].includes(err.response?.status)
+                || ['ECONNABORTED', 'ETIMEDOUT'].includes(err.code);
+              if (attempt === 1 && transient) {
+                await new Promise((r) => setTimeout(r, 1500));
+                continue;
+              }
+              popup.error(err.response?.data?.error || 'Payment could not be verified. Please contact support with your payment id.', 'Verification Failed');
+              setPaying(false);
+              return;
+            }
+          }
+        },
+        modal: { ondismiss: () => setPaying(false) },
+      });
+      rzp.on('payment.failed', (response: any) => {
+        popup.error(response?.error?.description || 'The payment failed. Please try again.', 'Payment Failed');
+        setPaying(false);
+      });
+      rzp.open();
+    } catch (err: any) {
+      popup.error(err.response?.data?.error || err.message || 'Payment failed. Please try again.', 'Payment Failed');
+      setPaying(false);
+    }
+  };
+
+  // Reopening always starts at step 1 with a clean slate.
+  useEffect(() => {
+    if (open) return;
+    setStep(1);
+    setStudent(null);
+    setSelected(null);
+    setPaidPayment(null);
+    setTracks([]);
+    setTracksError(false);
+    setError('');
+  }, [open]);
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !loading && onClose()}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !loading && !paying && onClose()}>
       <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Register Student</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Same details as a normal registration — the student is attributed to your partner account</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-gray-900">
+                {step === 3 ? 'Enrollment Complete' : step === 2 ? 'Choose a Track' : 'Register Student'}
+              </h2>
+              {step < 3 && (
+                <span className="text-[11px] font-semibold rounded-full bg-orange-50 text-orange-600 border border-orange-100 px-2 py-0.5">
+                  Step {step} of 2
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {step === 1
+                ? 'Same details as a normal registration — the student is attributed to your partner account'
+                : step === 2
+                  ? `Pick a program for ${student?.name ?? 'the student'} and pay now — enrollment opens immediately`
+                  : 'The student is enrolled and can sign in right away'}
+            </p>
           </div>
-          <button onClick={() => !loading && onClose()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors"><X size={18} /></button>
+          <button onClick={() => !loading && !paying && onClose()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors"><X size={18} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="overflow-y-auto">
+          {step === 1 && (
           <div className="p-6 space-y-7">
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded-xl flex items-center gap-2">
@@ -318,17 +478,152 @@ export default function RegisterStudentModal({ open, onClose, onCreated }: Props
               <p className="text-xs text-gray-500">Share these credentials with the student — they can sign in immediately.</p>
             </div>
           </div>
+          )}
+
+          {/* Step 2 — track selection with a visible price list */}
+          {step === 2 && (
+            <div className="p-6 space-y-5">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">Login credentials</p>
+                  <p className="mt-1 truncate font-mono text-sm text-gray-700">{student?.email} / {student?.password}</p>
+                </div>
+                <span className="shrink-0 text-[11px] text-gray-500">Share with the student</span>
+              </div>
+
+              <div>
+                <p className={sectionTitle}>Price list</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">Select an internship track</p>
+              </div>
+
+              {tracksLoading && (
+                <div className="flex items-center justify-center gap-3 py-10">
+                  <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-600 rounded-full animate-spin" />
+                  <span className="text-sm text-gray-500">Loading tracks…</span>
+                </div>
+              )}
+
+              {tracksError && (
+                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 flex items-center justify-between gap-3">
+                  <span>Couldn't load the track list.</span>
+                  <button type="button" onClick={loadTracks} className="shrink-0 font-medium underline hover:text-red-700">Retry</button>
+                </div>
+              )}
+
+              {!tracksLoading && !tracksError && tracks.length === 0 && (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+                  No active tracks are available right now. You can register the student now and enroll them later.
+                </div>
+              )}
+
+              {!tracksLoading && !tracksError && tracks.length > 0 && (
+                <ul className="space-y-2.5">
+                  {tracks.map((t) => {
+                    const active = selected === t.id;
+                    return (
+                      <li key={t.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelected(t.id)}
+                          aria-pressed={active}
+                          className={`w-full flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all ${
+                            active
+                              ? 'border-orange-400 bg-orange-50/60 ring-2 ring-orange-500/20 shadow-sm'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+                          }`}
+                        >
+                          <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${active ? 'border-orange-500 bg-orange-500' : 'border-gray-300'}`}>
+                            {active && <Check size={12} className="text-white" />}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-gray-900">{t.title}</span>
+                            <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                              <span className="rounded-md bg-gray-100 px-1.5 py-0.5 font-medium">{categoryLabel(t.category)}</span>
+                              <span>{t.duration} days</span>
+                              <span className="text-gray-300">•</span>
+                              <span>{t.modules} modules</span>
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-right">
+                            <span className="block text-lg font-bold leading-tight text-gray-900">₹{Number(t.price).toLocaleString()}</span>
+                            {Number(t.originalPrice) > Number(t.price) && (
+                              <span className="block text-[11px] text-gray-400 line-through">₹{Number(t.originalPrice).toLocaleString()}</span>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* Step 3 — payment confirmation */}
+          {step === 3 && (
+            <div className="p-8 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50">
+                <CheckCircle2 size={32} className="text-emerald-500" />
+              </div>
+              <h3 className="mt-4 text-xl font-bold text-gray-900">Payment Successful</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {student?.name} is enrolled in {paidPayment?.internshipTitle || selectedTrack?.title || 'this program'}
+              </p>
+              <div className="mt-5 space-y-2.5 rounded-xl border border-gray-100 bg-gray-50 p-4 text-left">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Amount Paid</span>
+                  <span className="font-semibold text-emerald-600">₹{Number(paidPayment?.amount ?? 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Receipt No.</span>
+                  <span className="font-mono text-gray-900">{paidPayment?.receiptNumber}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Program</span>
+                  <span className="font-medium text-gray-900">{paidPayment?.internshipTitle || selectedTrack?.title}</span>
+                </div>
+              </div>
+              <p className="mt-4 text-xs text-gray-500">
+                Sign in as <span className="font-mono">{student?.email}</span> with the password above to start learning.
+              </p>
+            </div>
+          )}
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 shrink-0 sticky bottom-0">
-            <button type="button" onClick={() => !loading && onClose()} disabled={loading}
-              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50">
-              Cancel
-            </button>
-            <button type="submit" disabled={loading}
-              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-sm font-semibold hover:from-amber-600 hover:to-orange-700 shadow-sm transition-colors disabled:opacity-50">
-              {loading ? 'Registering…' : 'Register Student'}
-            </button>
+          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex flex-wrap justify-end gap-3 shrink-0 sticky bottom-0">
+            {step === 1 && (<>
+              <button type="button" onClick={() => !loading && onClose()} disabled={loading}
+                className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={loading}
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-sm font-semibold hover:from-amber-600 hover:to-orange-700 shadow-sm transition-colors disabled:opacity-50">
+                {loading ? 'Registering…' : 'Register Student'}
+              </button>
+            </>)}
+
+            {step === 2 && (<>
+              <button type="button" onClick={() => { if (!loading && !paying) setStep(1); }} disabled={loading || paying}
+                className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50">
+                <ArrowLeft size={14} className="mr-1.5 -mt-0.5 inline" />Back
+              </button>
+              <button type="button" onClick={() => { if (!paying) onClose(); }} disabled={paying}
+                className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50">
+                Pay later
+              </button>
+              <button type="button" onClick={handlePay} disabled={!selectedTrack || paying}
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-sm font-semibold hover:from-amber-600 hover:to-orange-700 shadow-sm transition-colors disabled:opacity-50">
+                <CreditCard size={14} className="mr-1.5 -mt-0.5 inline" />
+                {paying ? 'Opening checkout…' : `Pay ₹${Number(selectedTrack?.price ?? 0).toLocaleString()} & Enroll`}
+              </button>
+            </>)}
+
+            {step === 3 && (
+              <button type="button" onClick={onClose}
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-sm font-semibold hover:from-amber-600 hover:to-orange-700 shadow-sm transition-colors">
+                Done
+              </button>
+            )}
           </div>
         </form>
       </div>

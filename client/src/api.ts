@@ -507,6 +507,23 @@ export const partnerApi = {
     api.post<{ message: string; user: { id: number; firstName: string; lastName: string; email: string } }>(
       '/partner/students', data
     ),
+  // Step 2 of partner registration: pick a track and pay for the new student.
+  getInternships: () => api.get<{ internships: Internship[] }>('/partner/internships'),
+  enrollStudent: (studentId: number, internshipId: number) =>
+    api.post<{
+      message: string;
+      payment: Payment;
+      orderId?: string;
+      amount?: number;
+      currency?: string;
+      keyId?: string;
+      alreadyPaid?: boolean;
+    }>(`/partner/students/${studentId}/enroll`, { internshipId }),
+  verifyStudentPayment: (paymentId: number, data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }) => api.post<{ message: string; payment: Payment }>(`/partner/payments/${paymentId}/verify`, data),
 };
 
 // Student API
