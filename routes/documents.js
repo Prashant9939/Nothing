@@ -9,6 +9,7 @@ const { ensureEnrollmentNumber } = require('../lib/docNumbers');
 const {
   companyName,
   companyAddress,
+  companyCin,
   cinLabel,
   directorName,
   footText,
@@ -44,7 +45,7 @@ const hasPassedAccess = async (enrollmentId, userId) => {
 // canAccessStudent after the fetch so partners/admins can load a row too.
 const loadEnrollment = (enrollmentId) => db.get(`
   SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, u.year,
-         u.rollNo, u.regNo, u.university,
+         u.rollNo, u.regNo, u.university, u.major as userMajor,
          i.title as internshipTitle, i.duration, i.modules, i.category
   FROM enrollments e
   JOIN users u ON e.userId = u.id
@@ -271,7 +272,9 @@ function startPdf(res, filename, opts = {}) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
   doc.pipe(res);
-  drawPageBackground(doc, opts.watermark || 'IQINTERN');
+  // `plain` documents (the daily log sheet) carry their own minimal frame and
+  // must stay clean white — no watermark, corner sweep, accents or waves.
+  if (!opts.plain) drawPageBackground(doc, opts.watermark || 'IQINTERN');
   return doc;
 }
 
@@ -1024,144 +1027,124 @@ router.get('/download/attendance/:enrollmentId', authenticateToken, async (req, 
   doc.end();
 });
 
-// ===================== DAILY LOG BOOK (multi-page) =====================
-// Day-wise activity register: one writable row per internship day, spilling to
-// as many pages as the duration needs (28 days -> 2 pages, 42 days -> 3).
-const LOG_COLS = [
-  { label: '#', w: 26 },
-  { label: 'DATE', w: 86 },
-  { label: 'DAY', w: 58 },
-  { label: 'TASKS / ACTIVITIES PERFORMED', w: 175 },
-  { label: 'HOURS', w: 44 },
-  { label: "SUPERVISOR'S SIGN.", w: 106 },
+// ===================== DAILY LOG SHEET (single page) =====================
+// One hand-fillable A4 page built to the supplied academic template: thin grey
+// frame, centred university/college head over an amber rule, a two-column
+// detail grid, then Date/Day blanks and a ruled "What I learned today" area.
+// Everything is fixed-position so it always stays on a single page.
+const LOGC = {
+  navy: '#183B56',    // headings, labels, blanks
+  slate: '#656E7E',   // college name
+  sub: '#5B6B77',     // italic subtitle
+  value: '#29343A',   // detail values
+  amber: '#D9BC7C',   // rule under the college name
+  rule: '#E1E8ED',    // ruled writing lines
+  sep: '#E5EBF0',     // separator above the date row
+  frame: '#DCE4EA',   // page frame
+  grey: '#747983',    // closing note
+};
+
+// Page frame inset from the A4 edge (bottom left at y + h = 810).
+const LOG_FRAME = { x: 38.5, y: 34, w: 523, h: 776 };
+// Writing rules / signature lines sit slightly inside the detail grid.
+const LOG_L = 72.4, LOG_R = 527.8;
+// Detail grid: two columns of label + value.
+const LOG_COL = [
+  { lx: 68.6, lw: 85, vx: 157.6, vw: 146 },
+  { lx: 310, lw: 83, vx: 397, vw: 135 },
 ];
-const LOG_ROW_H = 26;
+const LOG_ROW_Y = [190.3, 214.4, 239.3, 263.4, 287.6];
+// Ruled writing lines under "What I learned today".
+const LOG_LINES = [414.7, 442.6, 470.5, 498.4, 526.3, 554.2, 582.3];
+const LOG_DASH = (v) => (v == null || String(v).trim() === '' ? 'N/A' : String(v).trim());
 
-function logColX(i) {
-  let x = 50;
-  for (let c = 0; c < i; c++) x += LOG_COLS[c].w;
-  return x;
-}
-
-function logGridRow(doc, y, cells, opts = {}) {
-  const bottom = y + (opts.h || LOG_ROW_H);
-  if (opts.fill) { doc.fillColor(opts.fill).rect(50, y, 495, opts.h || LOG_ROW_H).fill(); }
-  if (opts.head) { doc.fillColor(GREEN.pale).rect(50, y, 495, opts.h || LOG_ROW_H).fill(); }
-  doc.lineWidth(0.6).strokeColor(GREEN.stroke);
-  for (let c = 0; c <= LOG_COLS.length; c++) {
-    const x = logColX(c);
-    doc.moveTo(x, y).lineTo(x, bottom).stroke();
+function logField(doc, y, col, label, value) {
+  const c = LOG_COL[col];
+  doc.font('Times-Bold').fontSize(9.5).fillColor(LOGC.navy)
+    .text(label, c.lx, y, { width: c.lw, height: 13, ellipsis: true });
+  // Real values (long e-mail addresses, organisation names) run wider than the
+  // grid cell — shrink the type instead of clipping the value.
+  const text = LOG_DASH(value);
+  doc.font('Times-Roman').fillColor(LOGC.value).fontSize(9.5);
+  let size = 9.5;
+  while (size > 7 && doc.widthOfString(text) > c.vw) {
+    size -= 0.5;
+    doc.fontSize(size);
   }
-  doc.moveTo(50, y).lineTo(545, y).stroke();
-  doc.moveTo(50, bottom).lineTo(545, bottom).stroke();
-  cells.forEach((text, i) => {
-    const x = logColX(i);
-    doc.font(opts.head ? 'Helvetica-Bold' : 'Helvetica')
-      .fontSize(opts.head ? 8 : 8.5)
-      .fillColor(opts.head ? GREEN.dark : (opts.color || GREEN.body))
-      .text(String(text ?? ''), x + 5, y + (opts.head ? 4.5 : 6), {
-        width: LOG_COLS[i].w - 10, height: opts.h || LOG_ROW_H - 6, ellipsis: true, align: opts.align || 'left',
-      });
-  });
-}
-
-function drawLogFooter(doc, pageNo, total) {
-  const w = doc.page.width;
-  const h = doc.page.height;
-  const g = doc.linearGradient(50, 0, w - 50, 0);
-  g.stop(0, GREEN.mint).stop(1, GREEN.wave);
-  doc.rect(50, h - 132, w - 100, 1.2).fill(g);
-  doc.font('Helvetica').fontSize(7).fillColor(GREEN.gray)
-    .text(footText(), 50, h - 126, { width: w - 190, height: 10, ellipsis: true, align: 'center' });
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GREEN.mid)
-    .text(`Page ${pageNo} of ${total}`, w - 130, h - 126, { width: 80, align: 'right' });
-  drawDisclaimer(doc, h - 117, { size: 6.5 });
+  doc.text(text, c.vx, y, { width: c.vw, height: 13, ellipsis: true });
 }
 
 function buildLogBook(doc, d) {
   const w = doc.page.width;
-  const LIMIT = doc.page.height - 140;
 
-  const header = (first) => {
-    drawBrand(doc, 50, 42);
-    drawTitle(doc, 'DAILY LOG BOOK', 92, { size: 24 });
-    drawQrBadge(doc, d.qr, 470, 40, 70);
-    doc.font('Helvetica').fontSize(9).fillColor(GREEN.gray)
-      .text(`Ref: ${d.ref}`, w - 270, 128, { width: 220, align: 'right' });
-    let y = 146;
-    if (first) {
-      doc.roundedRect(50, y, w - 100, 70, 6).fill('#ffffff').stroke(GREEN.stroke);
-      doc.rect(50, y + 6, 5, 58).fill(GREEN.mid);
-      doc.font('Helvetica').fontSize(9.5).fillColor(GREEN.body);
-      doc.text(`Student: ${d.studentName}`, 66, y + 7, { width: w - 132 });
-      doc.text(`College: ${d.college || 'N/A'}  |  Program: ${d.program}`, 66, y + 22, { width: w - 132, height: 13, ellipsis: true });
-      doc.text(`Duration: ${d.duration} Days  |  Enrolled: ${d.enrolledLabel}`, 66, y + 37, { width: w - 132, height: 13, ellipsis: true });
-      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(GREEN.dark)
-        .text(`Log Period: ${d.periodText}`, 66, y + 52, { width: w - 132 });
-      y += 82;
-    } else {
-      doc.font('Helvetica').fontSize(9).fillColor(GREEN.body)
-        .text(`Student: ${d.studentName}  |  Program: ${d.program}  |  Continued`, 50, y, { width: w - 100, height: 13, ellipsis: true });
-      y += 18;
-    }
-    y = sectionBar(doc, 'DAILY ACTIVITY RECORD', y);
-    logGridRow(doc, y, LOG_COLS.map((c) => c.label), { head: true, h: 18 });
-    return y + 18;
-  };
+  // Thin grey frame around the whole sheet
+  doc.lineWidth(0.8).strokeColor(LOGC.frame)
+    .rect(LOG_FRAME.x, LOG_FRAME.y, LOG_FRAME.w, LOG_FRAME.h).stroke();
 
-  const fmtDate = (x) => x.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  const start = new Date(d.enrolledAt);
+  // University / college head
+  doc.font('Times-Bold').fontSize(15).fillColor(LOGC.navy)
+    .text(LOG_DASH(d.university), 0, 55.5, { width: w, align: 'center' });
+  doc.font('Times-Roman').fontSize(10).fillColor(LOGC.slate)
+    .text(LOG_DASH(d.college), 0, 80.5, { width: w, align: 'center' });
 
-  let y = header(true);
-  for (let i = 1; i <= d.duration; i++) {
-    if (y + LOG_ROW_H > LIMIT) {
-      doc.addPage();
-      drawPageBackground(doc);
-      y = header(false);
-    }
-    const date = new Date(start.getTime() + (i - 1) * 86400000);
-    logGridRow(doc, y, [
-      i,
-      fmtDate(date),
-      date.toLocaleDateString('en-IN', { weekday: 'long' }),
-      '',
-      `${d.hoursPerDay} hrs`,
-      '',
-    ], { fill: i % 2 === 0 ? '#FAFAFA' : undefined });
-    y += LOG_ROW_H;
-  }
+  // Amber rule
+  doc.lineWidth(1.4).strokeColor(LOGC.amber)
+    .moveTo(91, 100.6).lineTo(504, 100.6).stroke();
 
-  // Closing signature strip (own page when the table runs to the footer)
-  if (y + 74 > LIMIT) {
-    doc.addPage();
-    drawPageBackground(doc);
-    y = header(false);
-  }
-  y += 16;
-  const sigY = y + 26;
-  [
-    { label: 'SIGNATURE OF STUDENT', x: 50, w: 210 },
-    { label: 'SIGNATURE OF PROGRAM GUIDE / SUPERVISOR', x: 300, w: 245 },
-  ].forEach((c) => {
-    doc.lineWidth(0.8).strokeColor('#9CA3AF').moveTo(c.x, sigY).lineTo(c.x + c.w, sigY).stroke();
-    doc.font('Helvetica-Bold').fontSize(8).fillColor(GREEN.dark).text(c.label, c.x, sigY + 5, { width: c.w });
-  });
-  // Supervisor's signature sits on the line (server/assets/sign.png)
-  drawSignature(doc, 422.5 - 35, sigY - 4, 70);
+  // Title block
+  doc.font('Times-Bold').fontSize(21).fillColor(LOGC.navy)
+    .text('DAILY LOG SHEET', 0, 117.2, { width: w, align: 'center' });
+  doc.font('Times-Italic').fontSize(11).fillColor(LOGC.sub)
+    .text('(Internship Log Record)', 0, 146, { width: w, align: 'center' });
 
-  // Footers with page numbers on every page
-  const range = doc.bufferedPageRange();
-  for (let i = range.start; i < range.start + range.count; i++) {
-    doc.switchToPage(i);
-    drawLogFooter(doc, i - range.start + 1, range.count);
-  }
-  return { pages: range.count, y: sigY + 14 };
+  // Two-column detail grid
+  logField(doc, LOG_ROW_Y[0], 0, 'Student Name:', d.studentName);
+  logField(doc, LOG_ROW_Y[0], 1, 'University Roll No.:', d.rollNo);
+  logField(doc, LOG_ROW_Y[1], 0, 'Phone Number:', d.phone);
+  logField(doc, LOG_ROW_Y[1], 1, 'Email ID:', d.email);
+  logField(doc, LOG_ROW_Y[2], 0, 'Department:', d.department);
+  logField(doc, LOG_ROW_Y[2], 1, 'Session:', d.session);
+  logField(doc, LOG_ROW_Y[3], 0, 'Internship Topic:', d.program);
+  logField(doc, LOG_ROW_Y[3], 1, 'Duration:', `${d.duration} Days`);
+  logField(doc, LOG_ROW_Y[4], 0, 'Organization:', d.organization);
+  logField(doc, LOG_ROW_Y[4], 1, 'CIN No.:', d.cin);
+
+  // Separator, then the hand-filled Date / Day blanks
+  doc.lineWidth(0.8).strokeColor(LOGC.sep)
+    .moveTo(67.9, 325.4).lineTo(532.3, 325.4).stroke();
+  doc.font('Times-Bold').fontSize(10.5).fillColor(LOGC.navy)
+    .text('Date:', 73.1, 348.9, { width: 60 });
+  doc.font('Times-Bold').fontSize(10.5).fillColor(LOGC.navy)
+    .text('Day:', 295.6, 348.9, { width: 60 });
+  doc.lineWidth(0.7).strokeColor(LOGC.navy);
+  doc.moveTo(115.3, 359.3).lineTo(233, 359.3).stroke();
+  doc.moveTo(330.3, 359.3).lineTo(501.4, 359.3).stroke();
+
+  // Ruled writing area
+  doc.font('Times-Bold').fontSize(12).fillColor(LOGC.navy)
+    .text('What I learned today:', LOG_L, 387.4, { width: 220 });
+  doc.lineWidth(0.8).strokeColor(LOGC.rule);
+  LOG_LINES.forEach((y) => doc.moveTo(LOG_L, y).lineTo(LOG_R, y).stroke());
+
+  // Signature strip + closing note
+  doc.lineWidth(0.7).strokeColor(LOGC.navy);
+  doc.moveTo(LOG_L, 774.7).lineTo(214.9, 774.7).stroke();
+  doc.moveTo(384.5, 774.7).lineTo(LOG_R, 774.7).stroke();
+  doc.font('Times-Roman').fontSize(9.5).fillColor(LOGC.navy)
+    .text('Student Signature', LOG_L, 780.9, { width: 142.5, align: 'center' });
+  doc.font('Times-Roman').fontSize(9.5).fillColor(LOGC.navy)
+    .text('Date', 384.5, 780.9, { width: 143.3, align: 'center' });
+  doc.font('Times-Italic').fontSize(8.5).fillColor(LOGC.grey)
+    .text('This daily log must be filled manually and maintained as part of internship records.',
+      0, 799, { width: w, align: 'center' });
+
+  return { pages: 1, y: 807 };
 }
 
 // Wraps the builder so the layout can be exercised without a database row.
 // Returns { pages, y } where y is the bottom of the last drawn element.
 function streamLogBook(res, d) {
-  const doc = startPdf(res, d.filename, { watermark: 'LOG BOOK', bufferPages: true });
+  const doc = startPdf(res, d.filename, { plain: true, margin: 0 });
   const result = buildLogBook(doc, d);
   doc.end();
   return result;
@@ -1175,25 +1158,24 @@ router.get('/download/log-book/:enrollmentId', authenticateToken, async (req, re
   }
 
   const attendanceNo = await ensureEnrollmentNumber(db, enrollment, 'attendanceNo');
-  const qrBuffer = await makeQr(attendanceNo);
   const duration = enrollment.duration || 30;
-  const fmt = (x) => x.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  const enrolled = new Date(enrollment.enrolledAt);
-  const dateMode = attendanceDateMode();
-  const start = dateMode === 'backward' ? new Date(Date.now() - (duration - 1) * 86400000) : enrolled;
 
   streamLogBook(res, {
     filename: `daily-log-book-${attendanceNo}.pdf`,
-    ref: attendanceNo,
-    qr: qrBuffer,
-    studentName: `${enrollment.firstName} ${enrollment.lastName}`,
+    university: enrollment.university,
     college: enrollment.college,
+    studentName: `${enrollment.firstName} ${enrollment.lastName}`.trim(),
+    // University roll number = the 14-digit regNo (rollNo is the shorter
+    // 12-digit college-level id). Fall back only if regNo is ever blank.
+    rollNo: enrollment.regNo || enrollment.rollNo,
+    phone: enrollment.phone,
+    email: enrollment.email,
+    department: enrollment.userMajor || enrollment.course,
+    session: enrollment.year,
     program: enrollment.internshipTitle,
     duration,
-    enrolledAt: start,
-    enrolledLabel: fmt(enrolled),
-    periodText: `${fmt(start)} – ${fmt(new Date(start.getTime() + (duration - 1) * 86400000))}`,
-    hoursPerDay: Math.round((126 / duration) * 10) / 10,
+    organization: companyName(),
+    cin: companyCin(),
   });
 });
 
