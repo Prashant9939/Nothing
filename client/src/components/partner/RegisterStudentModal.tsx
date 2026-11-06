@@ -117,6 +117,21 @@ export default function RegisterStudentModal({ open, onClose, onCreated }: Props
     return () => window.removeEventListener('keydown', onKey);
   }, [open, loading, paying, onClose]);
 
+  // Reopening always starts at step 1 with a clean slate. This hook must stay
+  // ABOVE the `if (!open) return null` below: a hook declared after an early
+  // return changes the hook count when the modal opens, which React rejects
+  // (rules of hooks).
+  useEffect(() => {
+    if (open) return;
+    setStep(1);
+    setStudent(null);
+    setSelected(null);
+    setPaidPayment(null);
+    setTracks([]);
+    setTracksError(false);
+    setError('');
+  }, [open]);
+
   if (!open) return null;
 
   const set = (field: string, value: string) => setForm({ ...form, [field]: value });
@@ -258,18 +273,6 @@ export default function RegisterStudentModal({ open, onClose, onCreated }: Props
       setPaying(false);
     }
   };
-
-  // Reopening always starts at step 1 with a clean slate.
-  useEffect(() => {
-    if (open) return;
-    setStep(1);
-    setStudent(null);
-    setSelected(null);
-    setPaidPayment(null);
-    setTracks([]);
-    setTracksError(false);
-    setError('');
-  }, [open]);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !loading && !paying && onClose()}>
