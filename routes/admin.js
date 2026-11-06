@@ -3,7 +3,8 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
-const { completePayment, expirePendingPayments } = require('../lib/payments');
+const { completePayment, expirePendingPayments, makeAdminTransactionId } = require('../lib/payments');
+const rzp = require('../lib/razorpay');
 const { refreshBrand } = require('../lib/documentBrand');
 const { streamAnswerKey } = require('../lib/answerKeyPdf');
 const { markCourseComplete } = require('../lib/courseProgress');
@@ -604,9 +605,41 @@ router.put('/payments/:id/status', authenticateToken, adminOnly, async (req, res
   if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
   if (status === 'completed' && payment.status !== 'completed') {
+    const adminTransactionId = await makeAdminTransactionId(transactionId);
+
+    // This approval never passes Razorpay's signature check, so ask Razorpay
+    // what actually happened before granting access:
+    //   order paid   -> the money exists and verify/webhook simply missed it;
+    //                   store the REAL payment id alongside the adm_ reference
+    //   order unpaid -> complete anyway (offline/cash approval is legitimate)
+    //                   but tell the caller no money was received
+    let razorpayPaymentId = null;
+    let warning = null;
+    if (payment.razorpayOrderId && rzp.isLive()) {
+      try {
+        const order = await rzp.fetchOrder(payment.razorpayOrderId);
+        if (order && order.status === 'paid') {
+          const captured = (await rzp.fetchPaymentsForOrder(order.id)).find((p) => p.status === 'captured');
+          if (captured) razorpayPaymentId = captured.id;
+        } else {
+          warning = `Razorpay reports this order as "${order ? order.status : 'unknown'}" with no payment captured. Approving grants access without money being received.`;
+        }
+      } catch (err) {
+        console.error('Razorpay check before admin approval failed:', err.message);
+        warning = `Could not confirm this payment with Razorpay (${err.message}). Approving grants access without a verified payment.`;
+      }
+    }
+
     // Same provisioning path as Razorpay verification: completes the payment,
     // creates/activates the enrollment and opens the exam — one transaction
-    await completePayment(payment, { transactionId: transactionId || null });
+    const updated = await completePayment(payment, { transactionId: adminTransactionId, razorpayPaymentId });
+    return res.json({
+      message: 'Payment approved by admin',
+      transactionId: updated.transactionId || adminTransactionId,
+      razorpayPaymentId: updated.razorpayPaymentId,
+      warning,
+      payment: updated,
+    });
   } else {
     // paidAt is a TEXT column storing the same 'YYYY-MM-DD HH24:MI:SS' format
     // as createdAt — CURRENT_TIMESTAMP (timestamptz) cannot be used directly

@@ -10,11 +10,35 @@ export default function AdminPayments() {
 
   useEffect(() => { adminApi.getPayments().then((res) => { setPayments(res.data.payments); setLoading(false); }).catch(() => setLoading(false)); }, []);
 
-  const updateStatus = async (id: number, status: string) => {
+  const updateStatus = async (p: Payment, status: string) => {
+    if (status === 'completed') {
+      const ok = await popup.confirm(
+        `Approve ₹${p.amount.toLocaleString()} for ${p.firstName ?? ''} ${p.lastName ?? ''} (${p.receiptNumber})? `
+        + 'This immediately grants full course access and unlocks the exam. '
+        + 'The payment will be stamped with an admin reference (adm_…) recording that it was approved manually.',
+        { title: 'Approve payment?', confirmLabel: 'Approve', cancelLabel: 'Cancel' },
+      );
+      if (!ok) return;
+    } else if (status === 'refunded') {
+      const ok = await popup.confirm(
+        `Refund ${p.receiptNumber}? Access is revoked unless another completed payment covers this enrollment.`,
+        { title: 'Refund payment', confirmLabel: 'Refund', cancelLabel: 'Cancel' },
+      );
+      if (!ok) return;
+    }
+
     try {
-      await adminApi.updatePaymentStatus(id, status);
-      setPayments(payments.map(p => p.id === id ? { ...p, status } : p));
-      popup.success(`Payment marked as ${status}.`, 'Status Updated');
+      const res = await adminApi.updatePaymentStatus(p.id, status);
+      const ref: string | undefined = res.data.transactionId;
+      const warning: string | undefined = res.data.warning;
+      setPayments(payments.map(x => x.id === p.id ? { ...x, status, transactionId: ref ?? x.transactionId } : x));
+      if (warning) {
+        popup.notify(`Approved without a captured payment. Admin reference: ${ref ?? '—'}`, { kind: 'warning', title: 'No Razorpay payment found' });
+      } else if (ref?.startsWith('adm_')) {
+        popup.success(`Approved by admin · reference ${ref}`, 'Payment Approved');
+      } else {
+        popup.success(`Payment marked as ${status}.`, 'Status Updated');
+      }
     } catch (err: any) {
       popup.error(err.response?.data?.error || 'Could not update the payment status. Please try again.', 'Update Failed');
     }
@@ -50,15 +74,18 @@ export default function AdminPayments() {
                   <td className="p-4 text-gray-500">{p.method}</td>
                   <td className="p-4">
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${p.status === 'completed' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : p.status === 'pending' ? 'bg-amber-50 text-slate-800 border border-slate-200' : p.status === 'refunded' ? 'bg-slate-100 text-slate-800 border border-slate-200' : 'bg-red-50 text-red-600 border border-red-100'}`}>{p.status}</span>
+                    {p.transactionId?.startsWith('adm_') && (
+                      <div className="mt-1 text-[10px] font-mono text-amber-700" title="Manually approved from this admin panel — not a Razorpay capture">{p.transactionId}</div>
+                    )}
                   </td>
                   <td className="p-4">
                     <div className="flex gap-2">
                       {p.status === 'pending' && (<>
-                        <button onClick={() => updateStatus(p.id, 'completed')} className="text-emerald-600 hover:text-emerald-700 text-xs font-medium">Approve</button>
-                        <button onClick={() => updateStatus(p.id, 'failed')} className="text-red-500 hover:text-red-600 text-xs font-medium">Reject</button>
+                        <button onClick={() => updateStatus(p, 'completed')} className="text-emerald-600 hover:text-emerald-700 text-xs font-medium">Approve</button>
+                        <button onClick={() => updateStatus(p, 'failed')} className="text-red-500 hover:text-red-600 text-xs font-medium">Reject</button>
                       </>)}
-                      {p.status === 'failed' && (<button onClick={() => updateStatus(p.id, 'completed')} className="text-emerald-600 hover:text-emerald-700 text-xs font-medium">Approve</button>)}
-                      {p.status === 'completed' && (<button onClick={() => updateStatus(p.id, 'refunded')} className="text-slate-800 hover:text-slate-900 text-xs font-medium">Refund</button>)}
+                      {p.status === 'failed' && (<button onClick={() => updateStatus(p, 'completed')} className="text-emerald-600 hover:text-emerald-700 text-xs font-medium">Approve</button>)}
+                      {p.status === 'completed' && (<button onClick={() => updateStatus(p, 'refunded')} className="text-slate-800 hover:text-slate-900 text-xs font-medium">Refund</button>)}
                     </div>
                   </td>
                 </tr>
