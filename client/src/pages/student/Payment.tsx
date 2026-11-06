@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { AlertTriangle, Check, CheckCircle2, Clock, CreditCard, Landmark, ShieldCheck } from 'lucide-react';
 import { studentApi } from '../../api';
@@ -39,33 +39,94 @@ export default function Payment() {
   const [success, setSuccess] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [now, setNow] = useState(() => Date.now());
+  // True while a charge that Razorpay already captured is waiting to be
+  // confirmed by our server (the webhook settles it within seconds).
+  const [confirming, setConfirming] = useState(false);
+  const lastAttemptRef = useRef<{ orderId: string; paymentId: string } | null>(null);
 
-  const load = () => {
-    setLoading(true);
-    setLoadError(false);
-    studentApi.getDashboard().then((res) => {
-      // The URL param is the opaque linkToken for new links; legacy
-      // /student/pay/<number> links (sequential payment id) still resolve.
-      const ref = String(paymentId ?? '');
-      const numeric = /^\d+$/.test(ref);
-      const p = res.data.payments.find((pay: Payment) =>
-        (pay.linkToken && pay.linkToken === ref) || (numeric && pay.id === Number(ref)));
-      if (p?.linkToken && numeric && p.linkToken !== ref) {
-        // Swap the sequential id out of the address bar so the public URL
-        // never shows how many payments the site has; the param change
-        // re-runs load() with the token.
-        navigate(`/student/pay/${p.linkToken}`, { replace: true });
-        return;
-      }
-      setPayment(p || null);
-      setLoading(false);
-    }).catch(() => {
-      setLoadError(true);
-      setLoading(false);
-    });
+  // This page always reads FRESH. Razorpay's webhook — and the order-reuse
+  // self-heal in POST /pay/:id/order — can flip an invoice to 'completed'
+  // server-side while this tab still holds a cached 'pending' copy, which
+  // would leave a Pay button (and a 409 loop) on an already-paid invoice.
+  const fetchPayment = (silent = false): Promise<Payment | null> => {
+    if (!silent) {
+      setLoading(true);
+      setLoadError(false);
+    }
+    return studentApi
+      .getDashboard({ force: true })
+      .then((res) => {
+        // The URL param is the opaque linkToken for new links; legacy
+        // /student/pay/<number> links (sequential payment id) still resolve.
+        const ref = String(paymentId ?? '');
+        const numeric = /^\d+$/.test(ref);
+        const p = res.data.payments.find((pay: Payment) =>
+          (pay.linkToken && pay.linkToken === ref) || (numeric && pay.id === Number(ref))) || null;
+        if (p?.linkToken && numeric && p.linkToken !== ref) {
+          // Swap the sequential id out of the address bar so the public URL
+          // never shows how many payments the site has; the param change
+          // re-runs load() with the token.
+          navigate(`/student/pay/${p.linkToken}`, { replace: true });
+          return null;
+        }
+        setPayment(p);
+        if (!silent) setLoading(false);
+        return p;
+      })
+      .catch(() => {
+        if (!silent) {
+          setLoadError(true);
+          setLoading(false);
+        }
+        return null;
+      });
   };
 
+  const load = () => { fetchPayment(false); };
+
   useEffect(() => { load(); }, [paymentId]);
+
+  // The checkout handler only runs AFTER Razorpay captured the charge, so a
+  // failed verify means the money already moved and only our confirmation is
+  // missing. The webhook completes it server-side within seconds — poll for
+  // that instead of ending on "contact support" for an invoice that is about
+  // to show as paid by itself.
+  useEffect(() => {
+    if (!confirming) return;
+    let cancelled = false;
+    let attempt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const tick = async () => {
+      attempt += 1;
+      const p = await fetchPayment(true);
+      if (cancelled) return;
+      if (p && p.status !== 'pending') {
+        setConfirming(false);
+        setProcessing(false);
+        // 'completed' -> success screen; 'failed'/'refunded' fall through to
+        // their own screens below, which is the honest end state.
+        if (p.status === 'completed') setSuccess(true);
+        return;
+      }
+      if (attempt >= 15) {
+        setConfirming(false);
+        setProcessing(false);
+        popup.error(
+          `Razorpay took the payment but our servers have not confirmed it yet. It is normally settled automatically within a few minutes — reload this page shortly. Your Razorpay payment id: ${lastAttemptRef.current?.paymentId || 'unknown'}`,
+          'Payment Not Confirmed Yet',
+        );
+        return;
+      }
+      timer = setTimeout(tick, 3000);
+    };
+
+    timer = setTimeout(tick, 3000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [confirming]);
 
   // Tick once a second while an unpaid invoice is open so the countdown stays
   // live; the server enforces the same deadline independently.
@@ -139,8 +200,16 @@ export default function Payment() {
                 await new Promise((r) => setTimeout(r, 1500));
                 continue;
               }
-              popup.error(err.response?.data?.error || 'Payment could not be verified. Please contact support with your payment id.', 'Verification Failed');
-              setProcessing(false);
+              // The charge is captured (this handler only runs on a successful
+              // checkout), so never dead-end on "contact support": keep the
+              // button in a confirming state and let the webhook settle it.
+              lastAttemptRef.current = { orderId: razorpay_order_id, paymentId: razorpay_payment_id };
+              setConfirming(true);
+              popup.notify(
+                err.response?.data?.error ||
+                  'Your bank may have debited the amount. We are confirming it with Razorpay now — this page will update automatically.',
+                { kind: 'info', title: 'Confirming Your Payment' },
+              );
               return;
             }
           }
@@ -305,7 +374,7 @@ export default function Payment() {
             )}
 
             <Button className="w-full" loading={processing} onClick={handlePay} icon={!processing ? <ShieldCheck size={15} /> : undefined}>
-              {processing ? 'Processing...' : `Pay ₹${payment.amount.toLocaleString()}`}
+              {processing ? (confirming ? 'Confirming your payment…' : 'Processing...') : `Pay ₹${payment.amount.toLocaleString()}`}
             </Button>
             <p className="mt-4 text-center text-xs text-slate-500">Payments are processed securely by Razorpay. Your payment details are never stored on our servers.</p>
           </div>
