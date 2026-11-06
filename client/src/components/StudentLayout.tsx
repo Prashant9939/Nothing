@@ -9,7 +9,7 @@ import {
 } from '@animateicons/react/lucide';
 import AnnouncementBell from './AnnouncementBell';
 import ChannelPromoBanner from './ChannelPromoBanner';
-import { ErrorBoundary, PageLoader, HamburgerButton, MobileMenuSheet, menuItemClass, glCtaClass } from './ui';
+import { ErrorBoundary, PageSkeleton, HamburgerButton, MobileMenuSheet, menuItemClass, glCtaClass } from './ui';
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <HouseIcon size={20} />,
@@ -348,7 +348,7 @@ export default function StudentLayout() {
         {/* Content */}
         <main className="p-4 sm:p-6 lg:p-8">
           <ErrorBoundary>
-            <Suspense fallback={<PageLoader label="Loading..." className="h-[50vh]" />}>
+            <Suspense fallback={<PageSkeleton label="Loading page..." />}>
               <div key={location.pathname} className="animate-page-in">
                 <Outlet />
               </div>

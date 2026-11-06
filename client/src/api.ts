@@ -9,14 +9,82 @@ const api = axios.create({
   timeout: 15000,
 });
 
+// ---------------------------------------------------------------------------
+// Short-lived GET cache.
+//
+// Moving between authenticated screens re-issues the same read requests
+// (profile, institutions, admin lists, learning modules) and each one costs
+// the user a full round trip — measured at 200-1300ms against this app's
+// database. These are the guarantees that keep the cache honest:
+//
+//   * keyed by bearer token, so one student's response can never be served to
+//     another account;
+//   * dropped by ANY mutating request, so a create/update/delete is never
+//     followed by a stale list;
+//   * dropped on login, logout and 401;
+//   * never applied to reads whose staleness could change a decision (payment
+//     and enrollment state gate what a student may see; exam attempts gate
+//     what they may submit).
+//
+// Analytics beacons are deliberately exempt from invalidation — they fire on
+// every page view and clearing there would make the cache useless.
+// ---------------------------------------------------------------------------
+const GET_TTL_MS = 10000;
+const getCache = new Map<string, { at: number; data: unknown }>();
+// Response objects served from the cache must not refresh their own TTL, or a
+// page read often enough would never expire.
+const cacheHits = new WeakSet<object>();
+
+const FRESH_ONLY = [
+  '/student/pay',
+  '/student/enrollment-status',
+  '/student/exam',
+  '/attempt',
+  '/auth/check',
+  '/admin/payments',
+];
+
+const cacheKey = (config: { url?: string; baseURL?: string; params?: unknown }) => {
+  const token = sessionStorage.getItem('token') || '';
+  const params = config.params ? JSON.stringify(config.params) : '';
+  return token + '|' + (config.baseURL || '') + (config.url || '') + '|' + params;
+};
+
+const cacheableGet = (config: { method?: string; url?: string }) => {
+  if ((config.method || 'get').toLowerCase() !== 'get') return false;
+  const url = config.url || '';
+  return !FRESH_ONLY.some((p) => url.includes(p));
+};
+
 api.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  if ((config.method || 'get').toLowerCase() !== 'get') {
+    if (!(config.url || '').includes('/analytics')) getCache.clear();
+    return config;
+  }
+
+  if (!cacheableGet(config)) return config;
+  const hit = getCache.get(cacheKey(config));
+  if (hit && Date.now() - hit.at < GET_TTL_MS) {
+    cacheHits.add(config);
+    // Serve the stored body with no network round trip. Overriding the
+    // adapter for this one request leaves the real transport untouched.
+    config.adapter = (): Promise<AxiosResponse> =>
+      Promise.resolve({ data: hit.data, status: 200, statusText: 'OK', headers: {}, config, request: null });
+  }
   return config;
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const config = response.config;
+    if (!cacheHits.has(config) && cacheableGet(config) && response.status >= 200 && response.status < 300) {
+      getCache.set(cacheKey(config), { at: Date.now(), data: response.data });
+    }
+    return response;
+  },
   (error) => {
     const url = error.config?.url || '';
     const isAuthAttempt = ['/auth/login', '/auth/register', '/auth/check', '/auth/logout'].some(p => url.includes(p));
@@ -24,6 +92,7 @@ api.interceptors.response.use(
       sessionStorage.removeItem('token');
       sessionStorage.removeItem('user');
       invalidateDashboard();
+      getCache.clear();
       // Let the SPA clear state and route to /login without re-downloading
       // the whole app (window.location was a multi-second white screen).
       window.dispatchEvent(new CustomEvent('auth:expired'));
@@ -43,6 +112,22 @@ let dashboardPending: Promise<AxiosResponse<DashboardResponse>> | null = null;
 
 export function invalidateDashboard() {
   dashboardCache = null;
+}
+
+// Drops cached GET responses (all of them, or just those whose URL contains
+// `urlPrefix`). `getDashboard({ force: true })` uses this so a caller asking
+// for a FRESH read actually gets one: Razorpay's webhook — and the order-reuse
+// self-heal — can complete an invoice server-side while this tab still holds
+// the "pending" body, and payment state is exactly the kind of read that must
+// never be served stale (see FRESH_ONLY above).
+export function bustGetCache(urlPrefix?: string) {
+  if (!urlPrefix) {
+    getCache.clear();
+    return;
+  }
+  for (const key of [...getCache.keys()]) {
+    if (key.includes(urlPrefix)) getCache.delete(key);
+  }
 }
 
 export interface User {
@@ -535,6 +620,7 @@ export const studentApi = {
   // Cached for DASHBOARD_TTL_MS so navigating between student screens does
   // not re-run the heavy aggregate query (and show a blank loader each time).
   getDashboard: (opts?: { force?: boolean }) => {
+    if (opts?.force) bustGetCache('/student/dashboard');
     if (!opts?.force && dashboardCache && Date.now() - dashboardCache.at < DASHBOARD_TTL_MS) {
       return Promise.resolve(dashboardCache.response);
     }

@@ -58,6 +58,14 @@ export default function AnalyticsTracker() {
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target || !target.closest(CLICKABLE)) return;
+      // An in-app link click already reports a `pageview` for the destination
+      // as soon as the router moves — sending a `click` as well made every
+      // single navigation two POSTs. Only off-app links need their own event.
+      const anchor = target.closest('a');
+      if (anchor) {
+        const href = anchor.getAttribute('href') || '';
+        if (href.startsWith('/') && !href.startsWith('//') && !anchor.target) return;
+      }
       const now = Date.now();
       if (now - lastClickAt.current < 1000) return;
       lastClickAt.current = now;

@@ -2,7 +2,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect, Suspense } from 'react';
 import { LogOutIcon, ChevronLeftIcon, SearchIcon, BellIcon, LayoutDashboardIcon, BookOpenIcon, UsersIcon, CreditCardIcon, FileTextIcon, LightbulbIcon, GlobeIcon, MegaphoneIcon, ClipboardIcon, SettingsIcon, ChartPieIcon, MessageSquareIcon, HandCoinsIcon, ShieldUserIcon } from "@animateicons/react/lucide";
-import { Spinner, HamburgerButton, MobileMenuSheet, menuItemClass, glCtaClass } from './ui';
+import { PageSkeleton, HamburgerButton, MobileMenuSheet, menuItemClass, glCtaClass } from './ui';
 
 const iconMap: Record<string, React.ReactNode> = {
   dashboard: <LayoutDashboardIcon size={20} />,
@@ -234,7 +234,7 @@ export default function AdminLayout() {
 
         {/* Content */}
         <main className="p-4 sm:p-6 lg:p-8">
-          <Suspense fallback={<div className="flex h-[50vh] items-center justify-center"><Spinner size={36} /></div>}>
+          <Suspense fallback={<PageSkeleton label="Loading page..." />}>
             <div key={location.pathname} className="animate-page-in">
               <Outlet />
             </div>

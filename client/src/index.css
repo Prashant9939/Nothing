@@ -28,7 +28,7 @@
   --animate-fade-in-up: fade-in-up 0.6s ease-out;
   --animate-fade-in-left: fade-in-left 0.6s ease-out;
   --animate-fade-in: fade-in 0.35s ease-out;
-  --animate-page-in: page-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-page-in: page-in 0.15s cubic-bezier(0.22, 1, 0.36, 1);
   --animate-pop-in: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   --animate-qr-glow: qr-glow 3s ease-in-out infinite;
   --animate-qr-bracket: qr-bracket 2.8s ease-in-out infinite;
@@ -90,9 +90,11 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Route change: new page slides up gently while fading in */
+/* Route change: new page slides up gently while fading in.
+   Starts at 0.6 (not 0) so content is readable from the first frame — a
+   full opacity:0 start left a blank page for ~280ms on every navigation. */
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(14px); }
+  from { opacity: 0.6; transform: translateY(14px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -330,7 +332,7 @@
   }
 }
 @keyframes page-in-fade {
-  from { opacity: 0; }
+  from { opacity: 0.6; }
   to { opacity: 1; }
 }
 

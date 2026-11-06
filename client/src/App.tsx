@@ -8,57 +8,62 @@ import ContentProtection from './components/ContentProtection';
 import OfflineGate from './components/OfflineGate';
 import AnalyticsTracker from './components/AnalyticsTracker';
 import RevealOnScroll from './components/RevealOnScroll';
-import { Spinner } from './components/ui';
+import { PageSkeleton } from './components/ui';
+import RoutePrefetcher, { lazyRoute, lazyLayout } from './prefetch';
 // Home stays eager (largest contentful paint); every other public page is
 // code-split so first paint only downloads what that route needs.
 import Home from './pages/Home';
-const Login = lazy(() => import('./pages/Login'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
-const Register = lazy(() => import('./pages/Register'));
-const Programs = lazy(() => import('./pages/Programs'));
-const VerifyCertificate = lazy(() => import('./pages/VerifyCertificate'));
-const About = lazy(() => import('./pages/About'));
-const Contact = lazy(() => import('./pages/Contact'));
-const NotFound = lazy(() => import('./pages/NotFound'));
-const Terms = lazy(() => import('./pages/Terms'));
-const Privacy = lazy(() => import('./pages/Privacy'));
-const FAQ = lazy(() => import('./pages/FAQ'));
-const Partner = lazy(() => import('./pages/Partner'));
-const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
-const AdminAnalytics = lazy(() => import('./pages/admin/Analytics'));
-const AdminInternships = lazy(() => import('./pages/admin/Internships'));
-const AdminUsers = lazy(() => import('./pages/admin/Users'));
-const AdminAdmins = lazy(() => import('./pages/admin/Admins'));
-const AdminPartners = lazy(() => import('./pages/admin/Partners'));
-const AdminPartnerDetail = lazy(() => import('./pages/admin/PartnerDetail'));
-const AdminPayments = lazy(() => import('./pages/admin/Payments'));
-const AdminExams = lazy(() => import('./pages/admin/Exams'));
-const AdminMarks = lazy(() => import('./pages/admin/Marks'));
-const AdminInstitutions = lazy(() => import('./pages/admin/Institutions'));
-const AdminAnnouncements = lazy(() => import('./pages/admin/Announcements'));
-const AdminIssues = lazy(() => import('./pages/admin/Issues'));
-const AdminQuestions = lazy(() => import('./pages/admin/Questions'));
-const AdminSettings = lazy(() => import('./pages/admin/Settings'));
-const AdminLayout = lazy(() => import('./components/AdminLayout'));
-const StudentLayout = lazy(() => import('./components/StudentLayout'));
+// Each lazy() is registered with the href that loads it, so the prefetcher
+// can warm a chunk on hover/idle instead of on click. `lazyRoute` matches the
+// exact href; `lazyLayout` matches the path and everything under it (shells
+// like /student, and dynamic stems like /student/pay).
+const Login = lazy(lazyRoute('/login', () => import('./pages/Login')));
+const ForgotPassword = lazy(lazyRoute('/forgot-password', () => import('./pages/ForgotPassword')));
+const Register = lazy(lazyRoute('/register', () => import('./pages/Register')));
+const Programs = lazy(lazyRoute('/programs', () => import('./pages/Programs')));
+const VerifyCertificate = lazy(lazyRoute('/certification', () => import('./pages/VerifyCertificate')));
+const About = lazy(lazyRoute('/about', () => import('./pages/About')));
+const Contact = lazy(lazyRoute('/contact', () => import('./pages/Contact')));
+const NotFound = lazy(() => import('./pages/NotFound')); // catch-all: no href to prefetch
+const Terms = lazy(lazyRoute('/terms', () => import('./pages/Terms')));
+const Privacy = lazy(lazyRoute('/privacy', () => import('./pages/Privacy')));
+const FAQ = lazy(lazyRoute('/faq', () => import('./pages/FAQ')));
+const Partner = lazy(lazyRoute('/partners', () => import('./pages/Partner')));
+const AdminDashboard = lazy(lazyRoute('/admin', () => import('./pages/admin/Dashboard')));
+const AdminAnalytics = lazy(lazyRoute('/admin/analytics', () => import('./pages/admin/Analytics')));
+const AdminInternships = lazy(lazyRoute('/admin/internships', () => import('./pages/admin/Internships')));
+const AdminUsers = lazy(lazyRoute('/admin/users', () => import('./pages/admin/Users')));
+const AdminAdmins = lazy(lazyRoute('/admin/admins', () => import('./pages/admin/Admins')));
+const AdminPartners = lazy(lazyRoute('/admin/partners', () => import('./pages/admin/Partners')));
+const AdminPartnerDetail = lazy(lazyLayout('/admin/partners', () => import('./pages/admin/PartnerDetail')));
+const AdminPayments = lazy(lazyRoute('/admin/payments', () => import('./pages/admin/Payments')));
+const AdminExams = lazy(lazyRoute('/admin/exams', () => import('./pages/admin/Exams')));
+const AdminMarks = lazy(lazyRoute('/admin/marks', () => import('./pages/admin/Marks')));
+const AdminInstitutions = lazy(lazyRoute('/admin/institutions', () => import('./pages/admin/Institutions')));
+const AdminAnnouncements = lazy(lazyRoute('/admin/announcements', () => import('./pages/admin/Announcements')));
+const AdminIssues = lazy(lazyRoute('/admin/issues', () => import('./pages/admin/Issues')));
+const AdminQuestions = lazy(lazyRoute('/admin/questions', () => import('./pages/admin/Questions')));
+const AdminSettings = lazy(lazyRoute('/admin/settings', () => import('./pages/admin/Settings')));
+const AdminLayout = lazy(lazyLayout('/admin', () => import('./components/AdminLayout')));
+const StudentLayout = lazy(lazyLayout('/student', () => import('./components/StudentLayout')));
 
-const StudentDashboard = lazy(() => import('./pages/student/Dashboard'));
-const SelectTrack = lazy(() => import('./pages/student/SelectTrack'));
-const Payment = lazy(() => import('./pages/student/Payment'));
-const StudentExam = lazy(() => import('./pages/student/Exam'));
-const Documents = lazy(() => import('./pages/student/Documents'));
-const Learning = lazy(() => import('./pages/student/Learning'));
-const ExamPage = lazy(() => import('./pages/student/ExamPage'));
-const EditProfile = lazy(() => import('./pages/student/EditProfile'));
-const PartnerDashboard = lazy(() => import('./pages/partner/Dashboard'));
-const PartnerStudents = lazy(() => import('./pages/partner/Students'));
-const PartnerPayments = lazy(() => import('./pages/partner/Payments'));
-const PartnerDocuments = lazy(() => import('./pages/partner/Documents'));
-const PartnerLayout = lazy(() => import('./components/PartnerLayout'));
+const StudentDashboard = lazy(lazyRoute('/student', () => import('./pages/student/Dashboard')));
+const SelectTrack = lazy(lazyRoute('/student/select-track', () => import('./pages/student/SelectTrack')));
+const Payment = lazy(lazyLayout('/student/pay', () => import('./pages/student/Payment')));
+const StudentExam = lazy(lazyLayout('/student/exam', () => import('./pages/student/Exam')));
+const Documents = lazy(lazyRoute('/student/documents', () => import('./pages/student/Documents')));
+const Learning = lazy(lazyRoute('/student/learning', () => import('./pages/student/Learning')));
+const ExamPage = lazy(lazyRoute('/student/exam-page', () => import('./pages/student/ExamPage')));
+const EditProfile = lazy(lazyRoute('/student/edit-profile', () => import('./pages/student/EditProfile')));
+const PartnerDashboard = lazy(lazyRoute('/partner', () => import('./pages/partner/Dashboard')));
+const PartnerStudents = lazy(lazyRoute('/partner/students', () => import('./pages/partner/Students')));
+const PartnerPayments = lazy(lazyRoute('/partner/payments', () => import('./pages/partner/Payments')));
+const PartnerDocuments = lazy(lazyRoute('/partner/documents', () => import('./pages/partner/Documents')));
+const PartnerLayout = lazy(lazyLayout('/partner', () => import('./components/PartnerLayout')));
 
 function ProtectedRoute({ children, role }: { children: React.ReactNode; role?: string }) {
   const { isAuthenticated, isLoading, user } = useAuth();
-  if (isLoading) return <div className="flex h-screen items-center justify-center"><Spinner size={36} /></div>;
+  if (isLoading) return <PageSkeleton label="Checking your session..." />;
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (role && user?.role !== role)
     return (
@@ -81,9 +86,10 @@ function SessionWatcher() {
   return null;
 }
 
-const routeFallback = (
-  <div className="flex h-screen items-center justify-center"><Spinner size={36} /></div>
-);
+// Page-shaped placeholder rather than a bare spinner: while a route chunk is
+// still downloading the user sees where content will land, and the shell
+// (navbar/footer) stays mounted above this boundary.
+const routeFallback = <PageSkeleton label="Loading page..." />;
 
 function App() {
   return (
@@ -94,6 +100,7 @@ function App() {
           <IdleLogout />
           <ContentProtection />
           <AnalyticsTracker />
+          <RoutePrefetcher />
           <RevealOnScroll />
           <OfflineGate>
             <Suspense fallback={routeFallback}>
@@ -114,7 +121,7 @@ function App() {
             <Route path="*" element={<Layout><NotFound /></Layout>} />
 
             {/* Admin Routes */}
-            <Route path="/admin" element={<ProtectedRoute role="admin"><Suspense fallback={<div className="flex h-screen items-center justify-center"><Spinner size={36} /></div>}><AdminLayout /></Suspense></ProtectedRoute>}>
+            <Route path="/admin" element={<ProtectedRoute role="admin"><Suspense fallback={<PageSkeleton label="Loading dashboard..." />}><AdminLayout /></Suspense></ProtectedRoute>}>
               <Route index element={<AdminDashboard />} />
               <Route path="analytics" element={<AdminAnalytics />} />
               <Route path="internships" element={<AdminInternships />} />
@@ -133,7 +140,7 @@ function App() {
             </Route>
 
             {/* Partner Routes (portal; public landing lives at /partners) */}
-            <Route path="/partner" element={<ProtectedRoute role="partner"><Suspense fallback={<div className="flex h-screen items-center justify-center"><Spinner size={36} /></div>}><PartnerLayout /></Suspense></ProtectedRoute>}>
+            <Route path="/partner" element={<ProtectedRoute role="partner"><Suspense fallback={<PageSkeleton label="Loading portal..." />}><PartnerLayout /></Suspense></ProtectedRoute>}>
               <Route index element={<PartnerDashboard />} />
               <Route path="students" element={<PartnerStudents />} />
               <Route path="payments" element={<PartnerPayments />} />
