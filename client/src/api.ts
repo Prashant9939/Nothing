@@ -288,7 +288,7 @@ export const adminApi = {
   getCertificates: () => api.get('/admin/certificates'),
   updateCertificateMarks: (id: number, score: number) => api.put(`/admin/certificates/${id}/marks`, { score }),
   getSettings: () => api.get('/admin/settings'),
-  updateSettings: (data: { attendanceDateMode?: string; companyName?: string; companyAddress?: string; companyCin?: string; directorName?: string; siteUrl?: string }) =>
+  updateSettings: (data: { attendanceDateMode?: string; companyName?: string; companyAddress?: string; companyCin?: string; directorName?: string; siteUrl?: string; maxCommissionPercent?: string }) =>
     api.put('/admin/settings', data),
   getQuestions: (track?: string) => api.get('/admin/questions', { params: track ? { track } : {} }),
   getQuestionStats: () => api.get('/admin/questions/stats'),
@@ -311,6 +311,10 @@ export const adminApi = {
     api.post<{ message: string; partner: PartnerListItem }>('/admin/partners', data),
   updatePartnerCommission: (id: number, commissionPercent: number) =>
     api.put<{ message: string; commissionPercent: number }>(`/admin/partners/${id}/commission`, { commissionPercent }),
+  // Applications submitted from the public /partners page ("New Partners" tab)
+  getPartnerInterest: () => api.get<{ requests: PartnerInterest[]; pending: number }>('/admin/partner-interest'),
+  updatePartnerInterest: (id: number, data: { status: PartnerInterest['status']; note?: string }) =>
+    api.put<{ message: string; request: PartnerInterest }>(`/admin/partner-interest/${id}/status`, data),
   getPayoutRequests: () => api.get<{ requests: PayoutRequest[] }>('/admin/payout-requests'),
   updatePayoutRequest: (id: number, data: { status?: PayoutRequest['status']; priority?: PayoutRequest['priority'] }) =>
     api.put<{ message: string; request: PayoutRequest }>(`/admin/payout-requests/${id}`, data),
@@ -626,6 +630,23 @@ export interface ContactMessage {
   createdAt: string;
 }
 
+// Someone applying to become a partner from the public /partners page.
+// Deliberately carries no commission field: the rate is an internal admin
+// decision made later, in the create-partner flow.
+export interface PartnerInterest {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  organization: string;
+  city: string;
+  message: string;
+  status: 'pending' | 'approved' | 'rejected';
+  note: string;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
 interface AnalyticsSummary {
   visitors: number;
   clicks: number;
@@ -695,6 +716,18 @@ export const announcementApi = {
   remove: (id: number) => afterMutate(api.delete<{ message: string }>(`/announcements/${id}`)),
   markRead: (id: number) => afterMutate(api.post<{ message: string }>(`/announcements/${id}/read`)),
   markAllRead: () => afterMutate(api.post<{ message: string }>('/announcements/read-all')),
+};
+
+// Unauthenticated endpoints any visitor can call.
+export const publicApi = {
+  submitPartnerInterest: (data: {
+    name: string;
+    email: string;
+    phone?: string;
+    organization: string;
+    city?: string;
+    message?: string;
+  }) => api.post<{ message: string }>('/auth/partner-interest', data),
 };
 
 export default api;

@@ -38,6 +38,16 @@ const contactLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Partner interest applications get their own budget for the same reason: a
+// public, unauthenticated write that seeds the admin's triage queue.
+const interestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 6,
+  message: { error: 'Too many applications sent. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Timing equalizer for the "no such user" path. Created lazily on first use
 // (and memoized): hashing at module load would burn ~100ms of CPU right in
 // the cold-start window, before the first request is even parsed.
@@ -373,6 +383,55 @@ router.post('/contact', contactLimiter, async (req, res) => {
   // must not end up in plaintext server logs.
   console.log(`[CONTACT] message #${result.lastInsertRowid} received`);
   res.json({ message: 'Message received. We will get back to you soon.' });
+});
+
+// ===================== PARTNER INTEREST FORM =====================
+// Public: any visitor can apply to become a partner from /partners. The
+// submission lands in partner_interest for the admin to triage from the
+// Partners page ("New Partners" tab). Commission is deliberately neither
+// collected nor mentioned here — the rate is an internal admin decision.
+router.post('/partner-interest', interestLimiter, async (req, res) => {
+  try {
+    const { name, email, phone, organization, city, message } = req.body;
+    const nameStr = String(name || '').trim();
+    const emailStr = String(email || '').trim();
+    const orgStr = String(organization || '').trim();
+
+    if (!nameStr || !emailStr || !orgStr) {
+      return res.status(400).json({ error: 'Name, email and organisation are required' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+    const phoneStr = String(phone || '').trim();
+    const digits = phoneStr.replace(/\D/g, '');
+    if (phoneStr && (digits.length < 7 || digits.length > 15)) {
+      return res.status(400).json({ error: 'Please enter a valid phone number' });
+    }
+    if (String(message || '').trim().length > 2000) {
+      return res.status(400).json({ error: 'Message is too long (2000 characters max)' });
+    }
+
+    // One live application per email keeps the triage queue clean.
+    const existing = await db.get(
+      "SELECT id FROM partner_interest WHERE lower(email) = lower(?) AND status = 'pending'",
+      emailStr
+    );
+    if (existing) {
+      return res.status(409).json({ error: 'You already have an application pending review.' });
+    }
+
+    const result = await db.run(
+      'INSERT INTO partner_interest (name, email, phone, organization, city, message) VALUES (?, ?, ?, ?, ?, ?)',
+      nameStr, emailStr, phoneStr, orgStr, String(city || '').trim(), String(message || '').trim()
+    );
+    // Row id only — applicant details are PII and must not reach the logs.
+    console.log(`[PARTNER-INTEREST] application #${result.lastInsertRowid} received`);
+    res.json({ message: 'Application received. Our partnership team will get back to you shortly.' });
+  } catch (err) {
+    console.error('Partner interest save error:', err);
+    return res.status(500).json({ error: 'Could not send your application. Please try again.' });
+  }
 });
 
 // ===================== PUBLIC INTERNSHIPS =====================

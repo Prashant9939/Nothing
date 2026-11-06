@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { adminApi } from '../../api';
@@ -10,6 +10,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  /** Pre-fill from a "New Partners" application. */
+  prefill?: { partnerName: string; fullName: string; email: string; phone: string };
+  /** Commission ceiling from Admin → Settings (default 10%). */
+  maxCommission?: number;
 }
 
 const inputCls =
@@ -20,14 +24,27 @@ const emptyForm = {
   password: '', confirmPassword: '', commissionPercent: '',
 };
 
-export default function NewPartnerModal({ open, onClose, onCreated }: Props) {
+export default function NewPartnerModal({ open, onClose, onCreated, prefill, maxCommission }: Props) {
   const popup = usePopup();
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Reopening seeds the form: from the application when one was picked,
+  // otherwise blank. Depends on `open` + the applicant's email so typing in
+  // the modal never resets it mid-edit.
+  useEffect(() => {
+    if (!open) return;
+    setForm(prefill
+      ? { ...emptyForm, ...prefill, password: '', confirmPassword: '', commissionPercent: '' }
+      : emptyForm);
+    setError('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, prefill?.email]);
+
   if (!open) return null;
 
+  const cap = Number.isFinite(maxCommission) ? Number(maxCommission) : 10;
   const set = (field: string, value: string) => setForm({ ...form, [field]: value });
 
   const handleSubmit = async (e: FormEvent) => {
@@ -43,6 +60,9 @@ export default function NewPartnerModal({ open, onClose, onCreated }: Props) {
     const pct = form.commissionPercent.trim() === '' ? 0 : Number(form.commissionPercent);
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
       setError('Commission must be a percentage between 0 and 100'); return;
+    }
+    if (pct > cap) {
+      setError(`Commission cannot exceed ${cap}%`); return;
     }
     const policyError = passwordPolicyError(form.password);
     if (policyError) { setError(policyError); return; }
@@ -95,6 +115,12 @@ export default function NewPartnerModal({ open, onClose, onCreated }: Props) {
               </div>
             )}
 
+            {prefill && (
+              <div className="bg-orange-50 border border-orange-200 text-orange-700 text-xs p-3 rounded-xl leading-relaxed">
+                Filled from a partner application — check the details, choose a password and a commission to create the account.
+              </div>
+            )}
+
             <div className="space-y-3">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Partner Organisation</p>
               <input type="text" value={form.partnerName} onChange={(e) => set('partnerName', e.target.value)} placeholder="Organisation / partner name *" className={inputCls} />
@@ -110,7 +136,7 @@ export default function NewPartnerModal({ open, onClose, onCreated }: Props) {
               <div className="flex items-center gap-3">
                 <div className="relative w-32 shrink-0">
                   <input
-                    type="number" min="0" max="100" step="0.5"
+                    type="number" min="0" max={cap} step="0.5"
                     value={form.commissionPercent}
                     onChange={(e) => set('commissionPercent', e.target.value)}
                     placeholder="e.g. 5"
@@ -118,7 +144,9 @@ export default function NewPartnerModal({ open, onClose, onCreated }: Props) {
                   />
                   <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">%</span>
                 </div>
-                <p className="text-xs text-gray-500">Share of every completed payment from students this partner registers — e.g. 5% of ₹199 = ₹9.95 added to their payout. Leave blank for no commission.</p>
+                <p className="text-xs text-gray-500">
+                  Share of every completed payment from students this partner registers — e.g. 5% of ₹199 = ₹9.95 added to their payout. Leave blank for no commission. <span className="font-medium text-gray-600">Maximum {cap}%.</span>
+                </p>
               </div>
             </div>
 

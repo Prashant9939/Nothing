@@ -526,9 +526,9 @@ router.put('/enrollments/:id/progress', authenticateToken, adminOnly, async (req
 });
 
 // ===================== SETTINGS =====================
-const { getAllSettings, setSettings } = require('../lib/settings');
+const { getAllSettings, setSettings, getMaxCommission } = require('../lib/settings');
 
-const SETTING_KEYS = ['attendanceDateMode', 'companyName', 'companyAddress', 'companyCin', 'directorName', 'siteUrl'];
+const SETTING_KEYS = ['attendanceDateMode', 'companyName', 'companyAddress', 'companyCin', 'directorName', 'siteUrl', 'maxCommissionPercent'];
 
 // The admin preview must show the origin the server will really embed in a QR.
 // Guessing from window.location.origin is what hid a wrong SITE_URL behind a
@@ -561,6 +561,14 @@ router.put('/settings', authenticateToken, adminOnly, async (req, res) => {
   }
   if (updates.siteUrl !== undefined && updates.siteUrl && !/^https?:\/\/\S+$/.test(updates.siteUrl)) {
     return res.status(400).json({ error: 'Verification link must start with http:// or https://' });
+  }
+  if (updates.maxCommissionPercent !== undefined) {
+    const cap = Number(updates.maxCommissionPercent);
+    if (!Number.isFinite(cap) || cap < 0 || cap > 100) {
+      return res.status(400).json({ error: 'Max commission must be a number between 0 and 100' });
+    }
+    // Normalise so getMaxCommission() reads back exactly what was saved.
+    updates.maxCommissionPercent = String(cap);
   }
   await setSettings(db, updates);
   // Both read the just-written state — run them together (2 RTTs → 1 wave)
@@ -1094,6 +1102,12 @@ router.post('/partners', authenticateToken, adminOnly, async (req, res) => {
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
       return res.status(400).json({ error: 'Commission must be a percentage between 0 and 100' });
     }
+    // Hard ceiling set in Admin → Settings (default 10%). Enforced here as
+    // well as in the UI, so a crafted request cannot slip past it.
+    const cap = await getMaxCommission(db);
+    if (pct > cap) {
+      return res.status(400).json({ error: `Commission cannot exceed ${cap}%` });
+    }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(String(email))) {
@@ -1138,6 +1152,10 @@ router.put('/partners/:id/commission', authenticateToken, adminOnly, async (req,
     const pct = Number(req.body.commissionPercent);
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
       return res.status(400).json({ error: 'Commission must be a percentage between 0 and 100' });
+    }
+    const cap = await getMaxCommission(db);
+    if (pct > cap) {
+      return res.status(400).json({ error: `Commission cannot exceed ${cap}%` });
     }
 
     const partner = await db.get("SELECT id FROM users WHERE id = ? AND role = 'partner'", id);
@@ -1200,6 +1218,51 @@ router.put('/payout-requests/:id', authenticateToken, adminOnly, async (req, res
     res.json({ message: 'Payout request updated', request });
   } catch (err) {
     console.error('Update payout request error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ===================== PARTNER INTEREST REQUESTS =====================
+// Applications submitted from the public /partners page. Listed under the
+// "New Partners" tab on the Partners page. Nothing about commission lives
+// here — the rate is decided later, in the create-partner flow.
+router.get('/partner-interest', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const [requests, pending] = await Promise.all([
+      db.all('SELECT * FROM partner_interest ORDER BY createdAt DESC, id DESC LIMIT 500'),
+      db.get("SELECT COUNT(*) AS count FROM partner_interest WHERE status = 'pending'"),
+    ]);
+    res.json({ requests, pending: Number(pending?.count || 0) });
+  } catch (err) {
+    console.error('List partner interest error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Triaging never creates the account by itself: "approved" records that the
+// admin reviewed it, and the actual partner is created from the pre-filled
+// modal. The status is still set here so the queue reflects reality.
+router.put('/partner-interest/:id/status', authenticateToken, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { status, note } = req.body;
+    if (!['pending', 'approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    const existing = await db.get('SELECT id FROM partner_interest WHERE id = ?', id);
+    if (!existing) return res.status(404).json({ error: 'Application not found' });
+
+    await db.run(`
+      UPDATE partner_interest
+      SET status = ?,
+          note = ?,
+          updatedAt = to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+      WHERE id = ?
+    `, status, String(note || '').trim(), id);
+    const request = await db.get('SELECT * FROM partner_interest WHERE id = ?', id);
+    res.json({ message: 'Application updated', request });
+  } catch (err) {
+    console.error('Partner interest update error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

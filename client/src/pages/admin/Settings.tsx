@@ -9,6 +9,8 @@ interface SettingsData {
   companyCin: string;
   directorName: string;
   siteUrl: string;
+  /** Ceiling on any partner's commission rate (default 10). */
+  maxCommissionPercent: string;
   /** Origin the server will really embed in new QR codes (computed server-side). */
   verifyBase?: string;
 }
@@ -71,6 +73,7 @@ export default function AdminSettings() {
     settings.companyCin !== initial.companyCin ||
     settings.directorName !== initial.directorName;
   const verifyDirty = settings.siteUrl !== initial.siteUrl;
+  const commissionDirty = settings.maxCommissionPercent !== initial.maxCommissionPercent;
   // Preview follows what is being typed; when the field is blank it shows the
   // origin the SERVER will use. Falling back to window.location.origin here is
   // what hid a wrong SITE_URL behind a preview that looked correct.
@@ -218,6 +221,43 @@ export default function AdminSettings() {
             />
             <p className="text-xs text-gray-500 mt-2">Shown on offer letters and above the CEO designation on certificates.</p>
           </div>
+        </div>
+      </section>
+
+      {/* Partner Commission Limit */}
+      <section className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Partner Commission Limit</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              The highest commission any partner can be given. Enforced when a partner is created and every
+              time the rate is edited.
+            </p>
+          </div>
+          <button
+            onClick={() => save('commission', { maxCommissionPercent: settings.maxCommissionPercent || '' }, 'Commission limit updated.')}
+            disabled={!commissionDirty || saving !== null}
+            className={saveBtnCls(commissionDirty && saving === null)}
+          >
+            {saving === 'commission' ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+
+        <div className="mt-5 max-w-xs">
+          <label htmlFor="max-commission" className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Maximum commission</label>
+          <div className="relative">
+            <input
+              id="max-commission"
+              type="number" min="0" max="100" step="0.5"
+              value={settings.maxCommissionPercent}
+              onChange={(e) => setVal('maxCommissionPercent', e.target.value)}
+              className={inputCls}
+            />
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">%</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Defaults to 10%. Internal limit only — it is never shown to applicants on the interest form.
+          </p>
         </div>
       </section>
 

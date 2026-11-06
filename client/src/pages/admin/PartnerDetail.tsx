@@ -26,6 +26,8 @@ export default function AdminPartnerDetail() {
   const [editingPct, setEditingPct] = useState(false);
   const [pctDraft, setPctDraft] = useState('');
   const [savingPct, setSavingPct] = useState(false);
+  // Commission ceiling from Admin → Settings (default 10%).
+  const [maxCommission, setMaxCommission] = useState(10);
 
   useEffect(() => {
     setLoading(true);
@@ -33,6 +35,12 @@ export default function AdminPartnerDetail() {
       .then((res) => setDetail(res.data))
       .catch((err) => setError(err.response?.data?.error || 'Could not load this partner.'))
       .finally(() => setLoading(false));
+    adminApi.getSettings()
+      .then((res) => {
+        const cap = Number(res.data?.settings?.maxCommissionPercent);
+        if (Number.isFinite(cap)) setMaxCommission(cap);
+      })
+      .catch(() => {});
   }, [id]);
 
   const removePartner = async () => {
@@ -80,6 +88,10 @@ export default function AdminPartnerDetail() {
     const pct = Number(pctDraft);
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
       popup.error('Commission must be a percentage between 0 and 100', 'Invalid Commission');
+      return;
+    }
+    if (pct > maxCommission) {
+      popup.error(`Commission cannot exceed ${maxCommission}%`, 'Invalid Commission');
       return;
     }
     setSavingPct(true);
@@ -149,7 +161,7 @@ export default function AdminPartnerDetail() {
             {editingPct ? (
               <span className="inline-flex items-center gap-1.5">
                 <input
-                  type="number" min="0" max="100" step="0.5"
+                  type="number" min="0" max={maxCommission} step="0.5"
                   value={pctDraft}
                   onChange={(e) => setPctDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') saveCommission(); if (e.key === 'Escape') setEditingPct(false); }}
@@ -157,7 +169,7 @@ export default function AdminPartnerDetail() {
                   className="w-20 px-2 py-1 text-xs border border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                   aria-label="Commission percentage"
                 />
-                <span className="text-xs text-gray-500">% commission</span>
+                <span className="text-xs text-gray-500">% commission <span className="text-gray-400">(max {maxCommission}%)</span></span>
                 <button onClick={saveCommission} disabled={savingPct} className="text-xs font-semibold text-orange-600 hover:text-orange-700 disabled:opacity-50">
                   {savingPct ? 'Saving…' : 'Save'}
                 </button>
