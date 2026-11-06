@@ -19,6 +19,16 @@ import {
   Wallet,
 } from 'lucide-react';
 import { ctaPrimaryClass, ctaSecondaryDarkClass, ctaSecondaryLightClass } from '../components/ui';
+import PartnerInterestForm from '../components/PartnerInterestForm';
+
+// Mirrors paymentBadge() in the live partner dashboard, so the preview shows
+// the exact chips a partner really sees next to each registration.
+const payBadge = (status: string) =>
+  status === 'completed'
+    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+    : status === 'pending'
+      ? 'bg-amber-50 text-amber-700 border border-amber-100'
+      : 'bg-red-50 text-red-600 border border-red-100';
 
 export default function Partner() {
   const benefits = [
@@ -45,20 +55,27 @@ export default function Partner() {
     { number: '24h', label: 'Support Response' },
   ];
 
+  // Sample figures for the preview — labels and columns match the live
+  // /partner dashboard exactly (stats[] and the Recent Students table there).
   const kpis = [
-    { label: 'Total Students', value: '128' },
-    { label: 'Active Students', value: '76' },
-    { label: 'Registrations', value: '94' },
-    { label: 'Paid Amount', value: '₹1,24,500' },
-    { label: 'Pending Payments', value: '₹47,000' },
-    { label: 'Generated Documents', value: '620' },
+    { label: 'Students', value: '128', sub: '76 active' },
+    { label: 'Registrations', value: '94', sub: 'referred enrollments' },
+    { label: 'Pending Amount', value: '₹47,000', sub: 'awaiting payment' },
+    { label: 'Documents', value: '620', sub: '41 certificates' },
+    { label: 'Partner Sign-ins', value: '36', sub: 'last: today' },
   ];
 
   const recent = [
-    { name: 'Rahul Kumar', reg: 'IQ-REG-0012', program: 'Data Science', pay: 'Paid', status: 'Active' },
-    { name: 'Aman Singh', reg: 'IQ-REG-0013', program: 'Python Development', pay: 'Pending', status: 'Pending' },
-    { name: 'Neha Sharma', reg: 'IQ-REG-0014', program: 'AI / ML', pay: 'Paid', status: 'Active' },
-    { name: 'Priya Verma', reg: 'IQ-REG-0015', program: 'Web Development', pay: 'Paid', status: 'Completed' },
+    { name: 'Rahul Kumar', email: 'rahul.kumar@example.com', program: 'Data Science', enrolled: '4 Nov 2026', pay: 'completed' },
+    { name: 'Aman Singh', email: 'aman.singh@example.com', program: 'Python Development', enrolled: '3 Nov 2026', pay: 'pending' },
+    { name: 'Neha Sharma', email: 'neha.sharma@example.com', program: 'AI / ML', enrolled: '2 Nov 2026', pay: 'completed' },
+    { name: 'Priya Verma', email: 'priya.verma@example.com', program: 'Web Development', enrolled: '31 Oct 2026', pay: 'completed' },
+  ];
+
+  const recentPayments = [
+    { name: 'Neha Sharma', program: 'AI / ML', amount: '₹1,999', status: 'completed' },
+    { name: 'Priya Verma', program: 'Web Development', amount: '₹1,999', status: 'completed' },
+    { name: 'Rahul Kumar', program: 'Data Science', amount: '₹1,999', status: 'pending' },
   ];
 
   const security = [
@@ -75,14 +92,12 @@ export default function Partner() {
     { icon: <Handshake className="w-7 h-7 text-orange-500" />, title: 'Education Consultants', desc: 'Manage multiple student registrations and track them end to end.' },
   ];
 
+  // Exactly the four links the live portal sidebar renders (PartnerLayout.tsx)
   const sidebarNav = [
     { icon: LayoutDashboard, label: 'Dashboard', active: true },
-    { icon: UserPlus, label: 'Register Student' },
     { icon: Users, label: 'Students' },
     { icon: Wallet, label: 'Payments' },
     { icon: FileText, label: 'Documents' },
-    { icon: BarChart3, label: 'Analytics' },
-    { icon: Headphones, label: 'Support' },
   ];
 
   const payStates = [
@@ -110,7 +125,7 @@ export default function Partner() {
           <h1 className="text-4xl md:text-5xl font-bold mb-4">IQIntern Partner Portal</h1>
           <p className="text-gray-400 max-w-xl mx-auto">A secure B2B workspace to register students, track payments and access verified documents — with your attribution on every registration.</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mt-10">
-            <Link to="/contact?subject=partnership" className={ctaPrimaryClass}>Get Your Partner ID</Link>
+            <a href="#apply" className={ctaPrimaryClass}>Get Your Partner ID</a>
             <a href="#how-it-works" className={ctaSecondaryDarkClass}>See How It Works</a>
           </div>
           <p className="text-sm text-gray-400 mt-4">
@@ -186,77 +201,140 @@ export default function Partner() {
           <div className="grid lg:grid-cols-5 gap-6 items-start">
             {/* Mock dashboard */}
             <div className="lg:col-span-3 bg-white border border-gray-200 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.08),0_8px_24px_rgba(0,0,0,0.05)] overflow-hidden reveal reveal-pop">
-              <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
-                <span className="w-3 h-3 rounded-full bg-red-400" />
-                <span className="w-3 h-3 rounded-full bg-amber-400" />
-                <span className="w-3 h-3 rounded-full bg-green-400" />
-                <span className="ml-2 text-xs text-gray-400 font-medium">Partner Dashboard</span>
+              {/* Window chrome */}
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                <span className="ml-2 text-[11px] text-gray-400 font-medium">partner.iqintern.in/dashboard</span>
               </div>
               <div className="flex">
-                {/* Mock sidebar nav */}
-                <div className="hidden lg:flex flex-col w-40 shrink-0 border-r border-gray-200 bg-gray-50/50 py-4">
-                  {sidebarNav.map((item) => (
-                    <div
-                      key={item.label}
-                      className={`flex items-center gap-2 px-4 py-2 text-[11px] font-medium ${
-                        item.active
-                          ? 'bg-orange-50 text-orange-700 border-r-2 border-orange-500'
-                          : 'text-gray-500'
-                      }`}
-                    >
-                      <item.icon className="w-3.5 h-3.5" />
-                      {item.label}
-                    </div>
-                  ))}
-                </div>
-                {/* Dashboard body */}
-                <div className="flex-1 p-5 min-w-0">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-                    {kpis.map((k) => (
-                      <div key={k.label} className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
-                        <div className="text-xl font-bold text-gray-900">{k.value}</div>
-                        <div className="text-[11px] text-gray-500 mt-0.5">{k.label}</div>
+                {/* Dark sidebar — same gradient, logo and nav as the live portal */}
+                <div className="flex flex-col w-[88px] sm:w-36 shrink-0 bg-gradient-to-b from-[#0a0f1e] via-[#0f172a] to-[#111827] py-3">
+                  <div className="flex items-center gap-2 px-3 pb-2.5 mb-2 border-b border-white/5">
+                    <img src="/logo/logo-white.png" alt="IQIntern" className="h-4 w-auto object-contain shrink-0" draggable={false} />
+                    <span className="hidden sm:block text-[8px] text-slate-400 uppercase tracking-widest">Partner</span>
+                  </div>
+                  <nav className="flex-1 px-2 space-y-1">
+                    {sidebarNav.map((item) => (
+                      <div
+                        key={item.label}
+                        className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-[10px] font-medium ${
+                          item.active
+                            ? 'bg-orange-500/15 text-white ring-1 ring-inset ring-orange-400/25'
+                            : 'text-slate-400'
+                        }`}
+                      >
+                        <item.icon className={`w-3.5 h-3.5 shrink-0 ${item.active ? 'text-orange-400' : 'text-slate-400'}`} />
+                        <span className="hidden sm:block truncate">{item.label}</span>
                       </div>
                     ))}
+                  </nav>
+                  <div className="mt-2 px-2.5 pt-2.5 border-t border-white/5 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-[9px] font-bold text-white flex items-center justify-center shrink-0">DI</span>
+                    <div className="hidden sm:block min-w-0">
+                      <p className="text-[9px] text-slate-200 truncate">Demo Institute</p>
+                      <p className="text-[8px] text-slate-400">Partner</p>
+                    </div>
                   </div>
-                  <div className="rounded-xl border border-gray-200 overflow-hidden">
-                    <table className="w-full text-xs">
-                      <thead className="bg-gray-50 text-gray-500 uppercase tracking-wide">
-                        <tr>
-                          <th className="text-left font-semibold px-3 py-2.5">Student</th>
-                          <th className="text-left font-semibold px-3 py-2.5 hidden sm:table-cell">Registration</th>
-                          <th className="text-left font-semibold px-3 py-2.5 hidden md:table-cell">Program</th>
-                          <th className="text-left font-semibold px-3 py-2.5">Payment</th>
-                          <th className="text-left font-semibold px-3 py-2.5">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {recent.map((r) => (
-                          <tr key={r.reg} className="hover:bg-gray-50">
-                            <td className="px-3 py-2.5 font-medium text-gray-900">{r.name}</td>
-                            <td className="px-3 py-2.5 text-gray-500 hidden sm:table-cell">{r.reg}</td>
-                            <td className="px-3 py-2.5 text-gray-500 hidden md:table-cell">{r.program}</td>
-                            <td className="px-3 py-2.5">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${r.pay === 'Paid' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>{r.pay}</span>
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${r.status === 'Pending' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>{r.status}</span>
-                            </td>
+                </div>
+
+                {/* Portal body */}
+                <div className="flex-1 min-w-0 bg-slate-50">
+                  {/* Top bar */}
+                  <div className="flex items-center justify-between gap-3 px-3 sm:px-4 py-2 bg-white/70 backdrop-blur border-b border-gray-200/60">
+                    <div className="min-w-0">
+                      <p className="text-[8px] font-medium uppercase tracking-wider text-slate-500">Partner Portal</p>
+                      <p className="text-[11px] font-semibold text-slate-900 truncate">Dashboard</p>
+                    </div>
+                    <span className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-[9px] font-bold text-white flex items-center justify-center shrink-0 ring-2 ring-orange-100">DI</span>
+                  </div>
+
+                  <div className="p-3 sm:p-4 space-y-3">
+                    {/* Dark hero banner — same one the live dashboard opens with */}
+                    <div className="rounded-xl p-3 flex flex-wrap items-center gap-3 bg-gradient-to-br from-[#0a0f1e] via-[#0f172a] to-[#1a2332] shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
+                      <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 text-[11px] font-bold text-white flex items-center justify-center shrink-0 shadow-[0_4px_16px_rgba(249,115,22,0.4)]">DI</span>
+                      <div className="min-w-0">
+                        <p className="text-[8px] uppercase tracking-widest text-orange-400">Partner Portal</p>
+                        <p className="text-xs font-bold text-white truncate">Demo Institute of Technology</p>
+                        <p className="text-[9px] text-slate-400 truncate">partner@demo-institute.edu · 9876543210</p>
+                      </div>
+                      <div className="ml-auto flex items-center gap-2">
+                        <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-[9px] font-semibold text-white">Register Student</span>
+                        <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/25 text-[9px] font-semibold">active</span>
+                      </div>
+                    </div>
+
+                    {/* The same five KPI tiles the live dashboard shows */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+                      {kpis.map((k) => (
+                        <div key={k.label} className="rounded-lg border border-gray-200 bg-white p-2.5">
+                          <div className="text-sm font-bold text-gray-900">{k.value}</div>
+                          <div className="text-[9px] text-gray-500 mt-0.5">{k.label}</div>
+                          <div className="text-[8px] text-gray-400 mt-0.5">{k.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Recent Students */}
+                    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
+                        <p className="text-[11px] font-semibold text-gray-900">Recent Students</p>
+                        <span className="text-[9px] font-semibold text-orange-600">View all</span>
+                      </div>
+                      <table className="w-full text-[10px]">
+                        <thead className="bg-gray-50 text-gray-500 uppercase tracking-wide">
+                          <tr>
+                            <th className="text-left font-semibold px-3 py-1.5">Student</th>
+                            <th className="text-left font-semibold px-3 py-1.5 hidden sm:table-cell">Program</th>
+                            <th className="text-left font-semibold px-3 py-1.5 hidden md:table-cell">Enrolled</th>
+                            <th className="text-left font-semibold px-3 py-1.5">Payment</th>
+                            <th className="text-left font-semibold px-3 py-1.5">Action</th>
                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {recent.map((r) => (
+                            <tr key={r.email} className="hover:bg-gray-50">
+                              <td className="px-3 py-1.5">
+                                <div className="font-medium text-gray-900">{r.name}</div>
+                                <div className="text-[9px] text-gray-400 truncate max-w-[9rem]">{r.email}</div>
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-500 hidden sm:table-cell">{r.program}</td>
+                              <td className="px-3 py-1.5 text-gray-500 hidden md:table-cell whitespace-nowrap">{r.enrolled}</td>
+                              <td className="px-3 py-1.5">
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${payBadge(r.pay)}`}>{r.pay}</span>
+                              </td>
+                              <td className="px-3 py-1.5"><span className="text-orange-600 font-semibold">View</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Recent Payments */}
+                    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
+                        <p className="text-[11px] font-semibold text-gray-900">Recent Payments</p>
+                        <span className="text-[9px] font-semibold text-orange-600">View all</span>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {recentPayments.map((p) => (
+                          <div key={p.name} className="flex items-center justify-between gap-2 px-3 py-1.5">
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-medium text-gray-900 truncate">{p.name}</p>
+                              <p className="text-[9px] text-gray-400 truncate">{p.program}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-[10px] font-semibold text-gray-900">{p.amount}</p>
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-semibold ${payBadge(p.status)}`}>{p.status}</span>
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                      </div>
+                    </div>
+
+                    <p className="text-[9px] text-gray-400 text-right">Illustrative preview — figures shown are examples</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 text-[10px] text-gray-500">
-                    <span className="font-semibold uppercase tracking-wide">Tracked states:</span>
-                    {payStates.map((p) => (
-                      <span key={p.label} className="inline-flex items-center gap-1">
-                        <span className={`w-1.5 h-1.5 rounded-full ${p.dot}`} />
-                        {p.label}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-gray-400 mt-2 text-right">Illustrative preview — figures shown are examples</p>
                 </div>
               </div>
             </div>
@@ -273,6 +351,18 @@ export default function Partner() {
                     </li>
                   ))}
                 </ul>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-xl p-6">
+                <h3 className="font-semibold mb-3">Live Payment States</h3>
+                <p className="text-sm text-gray-600 mb-4">Every registration shows exactly where its money is — one successful payment maps to exactly one registration.</p>
+                <div className="flex flex-wrap gap-2">
+                  {payStates.map((p) => (
+                    <span key={p.label} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-600">
+                      <span className={`w-1.5 h-1.5 rounded-full ${p.dot}`} />
+                      {p.label}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="bg-white border border-gray-200 rounded-xl p-6">
                 <h3 className="font-semibold mb-3">Built-in Support</h3>
@@ -344,6 +434,35 @@ export default function Partner() {
         </div>
       </section>
 
+      {/* Interest form — anyone can apply to become a partner */}
+      <section id="apply" className="py-16 px-4 bg-gray-50 scroll-mt-28">
+        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
+          <div className="reveal reveal-pop">
+            <h2 className="text-3xl font-bold mb-2">Become a Partner</h2>
+            <div className="w-12 h-1 bg-orange-500 rounded-full mb-6" />
+            <p className="text-gray-600 mb-6 leading-relaxed">
+              Fill in the form and our partnership team will review your institute. Once approved you receive
+              your Partner ID and portal credentials, and you can start registering students straight away.
+            </p>
+            <ul className="space-y-3">
+              {[
+                'Reviewed within one business day',
+                'A dedicated Partner ID stamped on every registration',
+                'Dashboard, payments and documents scoped to your own students',
+              ].map((t) => (
+                <li key={t} className="flex items-start gap-3 text-sm text-gray-600">
+                  <Check className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
+                  <span>{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="reveal reveal-pop" style={{ transitionDelay: '120ms' }}>
+            <PartnerInterestForm />
+          </div>
+        </div>
+      </section>
+
       {/* Attribution & commissions */}
       <section className="pb-16 px-4">
         <div className="max-w-5xl mx-auto bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-3xl p-8 md:p-12 reveal reveal-pop">
@@ -393,7 +512,7 @@ export default function Partner() {
             <h2 className="text-3xl font-bold mb-4">Ready to Onboard Your Institute?</h2>
             <p className="text-slate-300 mb-8 max-w-2xl mx-auto">Tell us about your institute and we will set up your Partner ID and portal access.</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/contact?subject=partnership" className={ctaPrimaryClass}>Get Your Partner ID</Link>
+              <a href="#apply" className={ctaPrimaryClass}>Get Your Partner ID</a>
               <Link to="/programs" className={ctaSecondaryDarkClass}>Browse Programs</Link>
             </div>
           </div>
