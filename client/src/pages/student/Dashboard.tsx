@@ -101,27 +101,28 @@ export default function StudentDashboard() {
           Grid order doubles as the mobile stack order (time-sensitive exam
           sits directly under the stats). */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-        <Hero user={user} activeEnrollment={activeEnrollment} completedCount={completedEnrollments.length} daysLeft={daysLeft} className="lg:col-span-5" />
+        <Hero user={user} activeEnrollment={activeEnrollment} completedCount={completedEnrollments.length} daysLeft={daysLeft} className="lg:col-span-6 xl:col-span-5" />
 
         {/* Stats */}
-        <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:col-span-4">
+        <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:col-span-6 xl:col-span-4">
           {stats.map((s) => (
-            <div key={s.label} className="bento-card flex items-center gap-3 rounded-[24px] border border-sand bg-alabaster p-4 shadow-bento">
-              <span className={`${iconChip} border border-burnt/20 bg-burnt-tint text-burnt`}>{s.icon}</span>
-              <div className="min-w-0">
+            <div key={s.label} className="bento-card flex flex-col justify-center rounded-[24px] border border-sand bg-alabaster p-4 shadow-bento">
+              <div className="flex items-center gap-3">
+                <span className={`${iconChip} border border-burnt/20 bg-burnt-tint text-burnt`}>{s.icon}</span>
                 <div className="font-display text-3xl font-bold leading-none text-ink">{s.value}</div>
-                <div className="mt-1.5 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-charcoal">{s.label}</div>
               </div>
+              {/* label spans the full tile so it never truncates on narrow screens */}
+              <div className="mt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-charcoal">{s.label}</div>
             </div>
           ))}
         </div>
 
-        <ExamCountdownCard className="lg:col-span-3" nextExam={nextExam} exams={exams} hasEnrollment={enrollments.length > 0} />
+        <ExamCountdownCard className="lg:col-span-6 xl:col-span-3" nextExam={nextExam} exams={exams} hasEnrollment={enrollments.length > 0} />
 
         {activeEnrollment ? (
-          <ActiveCard className="lg:col-span-5" enrollment={activeEnrollment} payments={payments} exams={exams} certificates={certificates} />
+          <ActiveCard className="lg:col-span-6 xl:col-span-5" enrollment={activeEnrollment} payments={payments} exams={exams} certificates={certificates} />
         ) : completedEnrollments.length > 0 ? (
-          <div className="bento-card flex flex-col items-center justify-center rounded-[24px] border border-sand bg-alabaster p-6 text-center shadow-bento lg:col-span-5">
+          <div className="bento-card flex flex-col items-center justify-center rounded-[24px] border border-sand bg-alabaster p-6 text-center shadow-bento lg:col-span-6 xl:col-span-5">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-burnt/20 bg-burnt-tint text-burnt">
               <StarIcon size={24} />
             </div>
@@ -132,7 +133,7 @@ export default function StudentDashboard() {
             </Link>
           </div>
         ) : (
-          <div className="bento-card flex flex-col items-center justify-center rounded-[24px] border border-dashed border-sand-dark bg-alabaster p-6 text-center shadow-bento lg:col-span-5">
+          <div className="bento-card flex flex-col items-center justify-center rounded-[24px] border border-dashed border-sand-dark bg-alabaster p-6 text-center shadow-bento lg:col-span-6 xl:col-span-5">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cream text-charcoal">
               <RocketIcon size={24} />
             </div>
@@ -144,9 +145,9 @@ export default function StudentDashboard() {
           </div>
         )}
 
-        <ProfileCard className="lg:col-span-3" completion={profileCompletion} />
+        <ProfileCard className="lg:col-span-6 xl:col-span-4" completion={profileCompletion} />
 
-        <SupportCard className="lg:col-span-4" />
+        <SupportCard className="lg:col-span-6 xl:col-span-3" />
 
         <AnnouncementsCard className="lg:col-span-12" initial={announcements} initialUnread={announcementsUnread} total={announcementsTotal} />
       </div>
@@ -158,7 +159,7 @@ export default function StudentDashboard() {
             <h2 className="font-display text-sm font-semibold uppercase tracking-[0.12em] text-ink">Completed Programs</h2>
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-charcoal">{completedEnrollments.length} total</span>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {completedEnrollments.map(enrollment => {
               const payment = payments.find(p => p.enrollmentId === enrollment.id);
               const exam = exams.find(e => e.enrollmentId === enrollment.id);
@@ -255,7 +256,7 @@ function Hero({ user, activeEnrollment, completedCount, daysLeft, className }: {
             </span>
           )}
         </div>
-        <h1 className="mt-3 font-display text-2xl font-bold tracking-tight text-cream sm:text-[28px]">{user?.firstName} {user?.lastName}</h1>
+        <h1 className="mt-3 font-display text-3xl font-bold leading-[1.1] tracking-tight text-cream sm:text-4xl xl:text-5xl 2xl:text-6xl">{user?.firstName} {user?.lastName}</h1>
         <p className="mt-1 text-sm text-cream/65">{subtitle}</p>
         {activeEnrollment && (
           <div className="mt-4 flex items-center gap-3">
@@ -693,7 +694,7 @@ function SupportCard({ className }: { className?: string }) {
         <span className={`${iconChip} shrink-0 border border-burnt/20 bg-burnt-tint text-burnt`}><MessageCircleIcon size={17} /></span>
         <div className="min-w-0">
           <h3 className="truncate font-display text-sm font-semibold text-ink">Need help?</h3>
-          <p className="mt-0.5 truncate font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-charcoal">We're just a message away</p>
+          <p className="mt-0.5 truncate font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-charcoal">We're a message away</p>
         </div>
       </div>
 
@@ -705,7 +706,7 @@ function SupportCard({ className }: { className?: string }) {
           className="flex items-center gap-3 rounded-xl bg-burnt px-4 py-3 text-sm font-bold text-cream shadow-[0_8px_20px_rgba(217,84,30,0.25)] transition-all hover:-translate-y-0.5 hover:bg-burnt-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/50"
         >
           <MessageCircleIcon size={16} />
-          <span className="flex-1">Join WhatsApp Channel</span>
+          <span className="flex-1">Join WhatsApp</span>
           <ExternalLinkIcon size={13} className="opacity-80" />
         </a>
         <Link
