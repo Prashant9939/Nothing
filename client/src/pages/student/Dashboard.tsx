@@ -163,53 +163,45 @@ export default function StudentDashboard() {
               const exam = exams.find(e => e.enrollmentId === enrollment.id);
               const cert = certificates.find(c => c.enrollmentId === enrollment.id);
               return (
-                <div key={enrollment.id} className="group bento-card overflow-hidden rounded-[24px] border border-sand bg-alabaster shadow-bento transition-all duration-300 hover:-translate-y-1 hover:border-sand-dark hover:shadow-bento-hover">
-                  <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 px-5 py-4 text-white">
-                    <img
-                      src={categoryImages.default}
-                      alt=""
-                      aria-hidden="true"
-                      className="absolute inset-0 h-full w-full scale-110 object-cover blur-[1px]"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-r from-slate-900/85 via-slate-900/55 to-slate-900/15" />
-                    <div className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-burnt/25 blur-3xl transition-all duration-500 group-hover:bg-burnt/40" />
-                    <div className="relative flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/10 backdrop-blur-sm">
-                          <StarIcon size={15} />
-                        </span>
-                        <h4 className="truncate font-display text-sm font-semibold">{enrollment.internshipTitle}</h4>
+                <div key={enrollment.id} className="bento-card flex flex-col rounded-[24px] border border-sand bg-alabaster p-5 shadow-bento transition-all duration-300 hover:-translate-y-1 hover:border-sand-dark hover:shadow-bento-hover">
+                  {/* header: theme chip + title + orange Done pill */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className={`${iconChip} shrink-0 border border-burnt/20 bg-burnt-tint text-burnt`}>
+                        <StarIcon size={16} />
+                      </span>
+                      <h4 className="truncate font-display text-sm font-semibold text-ink">{enrollment.internshipTitle}</h4>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-medium text-orange-700">
+                      <CircleCheckIcon size={11} /> Done
+                    </span>
+                  </div>
+
+                  {/* compact stat strip — mono labels like the rest of the grid */}
+                  <div className="mt-4 grid grid-cols-3 gap-3 border-t border-sand pt-4">
+                    <div className="min-w-0">
+                      <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-charcoal">Payment</div>
+                      <div className={`mt-1 truncate text-sm font-semibold ${payment?.status === 'completed' ? 'text-orange-700' : 'text-ink'}`}>
+                        {payment?.status === 'completed' ? 'Paid' : 'Pending'}
                       </div>
-                      <Badge tone="success" className="shrink-0 border-orange-400/30! bg-orange-500/15! text-orange-300!">
-                        <CircleCheckIcon size={11} /> Done
-                      </Badge>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-charcoal">Score</div>
+                      <div className="mt-1 text-sm font-semibold text-ink">{exam?.score != null ? `${exam.score}%` : '-'}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-charcoal">Grade</div>
+                      <div className="mt-1 text-sm font-bold text-ink">{cert?.grade || '-'}</div>
                     </div>
                   </div>
-                  <div className="space-y-2 p-5 text-xs">
-                    <div className="flex justify-between text-charcoal">
-                      <span>Payment</span>
-                      <span className={payment?.status === 'completed' ? 'font-medium text-orange-700' : 'text-ink'}>
-                        {payment?.status === 'completed' ? 'Paid' : 'Pending'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-charcoal">
-                      <span>Exam Score</span>
-                      <span className={exam?.score != null ? 'font-semibold text-ink' : 'text-charcoal'}>
-                        {exam?.score != null ? `${exam.score}%` : '-'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-charcoal">
-                      <span>Grade</span>
-                      <span className="font-bold text-ink">{cert?.grade || '-'}</span>
-                    </div>
-                    <div className="pt-2">
-                      <Link
-                        to="/student/documents"
-                        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-sand bg-cream py-2 text-xs font-semibold text-charcoal transition-colors hover:border-sand-dark hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40"
-                      >
-                        View Documents <ArrowRightIcon size={12} />
-                      </Link>
-                    </div>
+
+                  <div className="mt-auto pt-4">
+                    <Link
+                      to="/student/documents"
+                      className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-sand bg-cream py-2.5 text-sm font-semibold text-charcoal transition-colors hover:border-sand-dark hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40"
+                    >
+                      View Documents <ArrowRightIcon size={13} />
+                    </Link>
                   </div>
                 </div>
               );
