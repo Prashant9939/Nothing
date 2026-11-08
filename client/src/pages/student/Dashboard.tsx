@@ -11,7 +11,6 @@ import {
   ExternalLinkIcon, TimerIcon,
 } from '@animateicons/react/lucide';
 import { PageSkeleton, EmptyState, Button, Badge } from '../../components/ui';
-import { InkCard } from '../../components/bento';
 import { categoryImages } from '../../categories';
 import { WHATSAPP_CHANNEL_URL } from '../../constants';
 
@@ -96,12 +95,13 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-5">
-      {/* Asymmetric 12-column bento grid: spotlight (5) + stats (4) + exam (3),
-          track (5) + profile (3) + support (4), announcements full width.
+      {/* Asymmetric 12-column bento grid: full-width hero (greeting + large
+          name + merged profile), stats (4) + exam (3) + track (5),
+          support (4) + announcements (8).
           Grid order doubles as the mobile stack order (time-sensitive exam
           sits directly under the stats). */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-        <Hero user={user} activeEnrollment={activeEnrollment} completedCount={completedEnrollments.length} daysLeft={daysLeft} className="lg:col-span-6 xl:col-span-5" />
+        <Hero user={user} activeEnrollment={activeEnrollment} completedCount={completedEnrollments.length} daysLeft={daysLeft} completion={profileCompletion} className="lg:col-span-12" />
 
         {/* Stats */}
         <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:col-span-6 xl:col-span-4">
@@ -145,11 +145,9 @@ export default function StudentDashboard() {
           </div>
         )}
 
-        <ProfileCard className="lg:col-span-6 xl:col-span-4" completion={profileCompletion} />
+        <SupportCard className="lg:col-span-6 xl:col-span-4" />
 
-        <SupportCard className="lg:col-span-6 xl:col-span-3" />
-
-        <AnnouncementsCard className="lg:col-span-12" initial={announcements} initialUnread={announcementsUnread} total={announcementsTotal} />
+        <AnnouncementsCard className="lg:col-span-12 xl:col-span-8" initial={announcements} initialUnread={announcementsUnread} total={announcementsTotal} />
       </div>
 
       {/* Completed Programs */}
@@ -225,17 +223,20 @@ export default function StudentDashboard() {
 
 /* ============================ Hero ============================ */
 
-function Hero({ user, activeEnrollment, completedCount, daysLeft, className }: {
+function Hero({ user, activeEnrollment, completedCount, daysLeft, completion, className }: {
   user: { firstName?: string; lastName?: string } | null;
   activeEnrollment?: Enrollment;
   completedCount: number;
   daysLeft: number | null;
+  completion: ProfileCompletion;
   className?: string;
 }) {
   const [hour] = useState(() => new Date().getHours());
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const progress = activeEnrollment?.progress ?? 0;
   const urgent = daysLeft != null && daysLeft <= 7;
+  const { pct, missing } = completion;
+  const complete = pct >= 100;
 
   const subtitle = activeEnrollment
     ? `Currently learning: ${activeEnrollment.internshipTitle}`
@@ -244,49 +245,95 @@ function Hero({ user, activeEnrollment, completedCount, daysLeft, className }: {
       : 'Pick a track to start your internship journey.';
 
   return (
-    <InkCard className={`flex flex-col justify-between gap-6 p-6 sm:p-7 ${className ?? ''}`}>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-cream/60">{greeting}, welcome back</span>
-          {activeEnrollment && daysLeft != null && (
-            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-semibold ${
-              urgent ? 'border-amber-400/40 bg-amber-500/20 text-amber-200' : 'border-burnt/40 bg-burnt/20 text-burnt'
-            }`}>
-              <CalendarDaysIcon size={12} /> {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left
-            </span>
-          )}
-        </div>
-        <h1 className="mt-3 font-display text-3xl font-bold leading-[1.1] tracking-tight text-cream sm:text-4xl xl:text-5xl 2xl:text-6xl">{user?.firstName} {user?.lastName}</h1>
-        <p className="mt-1 text-sm text-cream/65">{subtitle}</p>
-        {activeEnrollment && (
-          <div className="mt-4 flex items-center gap-3">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-cream/15">
-              <div
-                className="h-full rounded-full bg-burnt shadow-[0_0_10px_rgba(217,84,30,0.55)] transition-all duration-500"
-                style={{ width: `${progress}%` }}
-              />
+    <section className={`bento-card rounded-[24px] border border-sand bg-alabaster p-6 shadow-bento sm:p-7 ${className ?? ''}`}>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between lg:gap-10">
+        {/* Greeting + extra-large name + primary CTA */}
+        <div className="flex min-w-0 flex-1 flex-col justify-between gap-6">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-charcoal">{greeting}, welcome back</span>
+              {activeEnrollment && daysLeft != null && (
+                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-semibold ${
+                  urgent ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-burnt/30 bg-burnt-tint text-burnt'
+                }`}>
+                  <CalendarDaysIcon size={12} /> {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left
+                </span>
+              )}
             </div>
-            <span className="font-mono text-[11px] font-semibold text-burnt">{progress}%</span>
+            <h1 className="mt-3 font-display text-3xl font-bold leading-[1.05] tracking-tight text-ink sm:text-4xl xl:text-6xl 2xl:text-7xl">{user?.firstName} {user?.lastName}</h1>
+            <p className="mt-2 text-sm text-charcoal">{subtitle}</p>
+            {activeEnrollment && (
+              <div className="mt-4 flex max-w-md items-center gap-3">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sand-dark/50">
+                  <div
+                    className="h-full rounded-full bg-burnt transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <span className="font-mono text-[11px] font-semibold text-burnt">{progress}%</span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {activeEnrollment ? (
-          <>
-            <Link to="/student/learning" className="inline-flex items-center gap-2 rounded-xl bg-burnt px-5 py-2.5 text-sm font-semibold text-cream shadow-md shadow-burnt/30 transition-all hover:-translate-y-0.5 hover:bg-burnt-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/50">
-              Continue Learning <ArrowRightIcon size={14} />
-            </Link>
-            <Link to="/student/documents" className="inline-flex items-center gap-2 rounded-xl border border-cream/15 bg-cream/10 px-5 py-2.5 text-sm font-medium text-cream backdrop-blur-sm transition-all hover:bg-cream/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cream/40">
-              Documents
-            </Link>
-          </>
-        ) : (
-          <Link to="/student/select-track" className="inline-flex items-center gap-2 rounded-xl bg-burnt px-5 py-2.5 text-sm font-semibold text-cream shadow-md shadow-burnt/30 transition-all hover:-translate-y-0.5 hover:bg-burnt-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/50">
-            {completedCount > 0 ? 'Browse Programs' : 'Explore Programs'} <ArrowRightIcon size={14} />
+          <div className="flex flex-wrap gap-2">
+            {activeEnrollment ? (
+              <>
+                <Link to="/student/learning" className="inline-flex items-center gap-2 rounded-xl bg-burnt px-5 py-2.5 text-sm font-semibold text-cream shadow-md shadow-burnt/25 transition-all hover:-translate-y-0.5 hover:bg-burnt-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/50">
+                  Continue Learning <ArrowRightIcon size={14} />
+                </Link>
+                <Link to="/student/documents" className="inline-flex items-center gap-2 rounded-xl border border-sand bg-cream px-5 py-2.5 text-sm font-medium text-charcoal transition-colors hover:border-sand-dark hover:bg-alabaster focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40">
+                  Documents
+                </Link>
+              </>
+            ) : (
+              <Link to="/student/select-track" className="inline-flex items-center gap-2 rounded-xl bg-burnt px-5 py-2.5 text-sm font-semibold text-cream shadow-md shadow-burnt/25 transition-all hover:-translate-y-0.5 hover:bg-burnt-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/50">
+                {completedCount > 0 ? 'Browse Programs' : 'Explore Programs'} <ArrowRightIcon size={14} />
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {/* Profile completion — merged from its own card */}
+        <div className="flex flex-col justify-center gap-4 border-t border-sand pt-6 lg:w-[330px] lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+          <div className="flex items-center gap-3">
+            <span className={`${iconChip} shrink-0 border border-burnt/20 bg-burnt-tint text-burnt`}><UserIcon size={17} /></span>
+            <div className="min-w-0">
+              <h3 className="truncate font-display text-sm font-semibold text-ink">Profile</h3>
+              <p className="mt-0.5 font-mono text-[11px] font-semibold uppercase leading-tight tracking-[0.16em] text-charcoal">
+                {complete ? 'Everything is filled in' : `${missing.length} ${missing.length === 1 ? 'item' : 'items'} left to add`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <CompletionRing pct={pct} />
+            <div className="min-w-0 flex-1">
+              {complete ? (
+                <p className="flex items-start gap-2 text-xs font-medium text-orange-700">
+                  <CircleCheckIcon size={15} className="mt-px shrink-0" />
+                  Your profile is complete — nice!
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {missing.map(field => (
+                    <li key={field} className="flex items-center gap-2 text-xs text-charcoal">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+                      {PROFILE_LABELS[field] || field}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <Link
+            to="/student/edit-profile"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-sand bg-cream py-2.5 text-sm font-semibold text-charcoal transition-colors hover:border-sand-dark hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40"
+          >
+            {complete ? 'View Profile' : 'Complete Profile'} <ArrowRightIcon size={13} />
           </Link>
-        )}
+        </div>
       </div>
-    </InkCard>
+    </section>
   );
 }
 
@@ -526,54 +573,7 @@ function ExamCountdownCard({ className, nextExam, exams, hasEnrollment }: {
   );
 }
 
-/* ======================== Profile completion ======================== */
-
-function ProfileCard({ className, completion }: { className?: string; completion: ProfileCompletion }) {
-  const { pct, missing } = completion;
-  const complete = pct >= 100;
-
-  return (
-    <section className={`bento-card rounded-[24px] border border-sand bg-alabaster p-5 shadow-bento ${className ?? ''}`}>
-      <div className="mb-4 flex items-center gap-3">
-        <span className={`${iconChip} shrink-0 border border-burnt/20 bg-burnt-tint text-burnt`}><UserIcon size={17} /></span>
-        <div className="min-w-0">
-          <h3 className="truncate font-display text-sm font-semibold text-ink">Profile</h3>
-          <p className="mt-0.5 font-mono text-[11px] font-semibold uppercase leading-tight tracking-[0.16em] text-charcoal">
-            {complete ? 'Everything is filled in' : `${missing.length} ${missing.length === 1 ? 'item' : 'items'} left to add`}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <CompletionRing pct={pct} />
-        <div className="min-w-0 flex-1">
-          {complete ? (
-            <p className="flex items-start gap-2 text-xs font-medium text-orange-700">
-              <CircleCheckIcon size={15} className="mt-px shrink-0" />
-              Your profile is complete — nice!
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {missing.map(field => (
-                <li key={field} className="flex items-center gap-2 text-xs text-charcoal">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
-                  {PROFILE_LABELS[field] || field}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <Link
-        to="/student/edit-profile"
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-sand bg-cream py-2.5 text-sm font-semibold text-charcoal transition-colors hover:border-sand-dark hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40"
-      >
-        {complete ? 'View Profile' : 'Complete Profile'} <ArrowRightIcon size={13} />
-      </Link>
-    </section>
-  );
-}
+/* ======================== Completion ring (shown in hero) ======================== */
 
 function CompletionRing({ pct }: { pct: number }) {
   const r = 26;
