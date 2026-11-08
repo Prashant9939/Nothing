@@ -227,8 +227,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
 // ===================== UPDATE PROFILE =====================
 router.put('/profile', authenticateToken, async (req, res) => {
   try {
-    const { firstName, lastName, phone, university, college, course, year } = req.body;
+    const { firstName, lastName, phone, university, college, course, year, major, rollNo, regNo, gender, dob } = req.body;
 
+    // COALESCE on the added fields keeps them untouched when a client (older
+    // bundle) does not send them at all; an explicit '' still clears the cell.
     await db.run(`
       UPDATE users SET
         firstName = COALESCE(?, firstName),
@@ -238,10 +240,16 @@ router.put('/profile', authenticateToken, async (req, res) => {
         college = COALESCE(?, college),
         course = COALESCE(?, course),
         year = COALESCE(?, year),
+        major = COALESCE(?, major),
+        rollNo = COALESCE(?, rollNo),
+        regNo = COALESCE(?, regNo),
+        gender = COALESCE(?, gender),
+        dob = COALESCE(?, dob),
         updatedAt = CURRENT_TIMESTAMP
       WHERE id = ?
     `, firstName ?? null, lastName ?? null, phone ?? null,
       university ?? null, college ?? null, course ?? null, year ?? null,
+      major ?? null, rollNo ?? null, regNo ?? null, gender ?? null, dob ?? null,
       req.user.id);
 
     const user = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);

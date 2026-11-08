@@ -62,20 +62,32 @@ async function hasCompletedPayment(enrollmentId, userId) {
 
 // ===================== STUDENT PROFILE =====================
 router.get('/profile', authenticateToken, async (req, res) => {
-  const user = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role, createdAt FROM users WHERE id = ?', req.user.id);
+  const user = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, major, rollNo, regNo, gender, dob, year, role, createdAt FROM users WHERE id = ?', req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.course) user.course = user.course.toUpperCase();
   res.json({ user });
 });
 
 router.put('/profile', authenticateToken, async (req, res) => {
-  const { firstName, lastName, phone, university, college, course, year } = req.body;
+  const { firstName, lastName, phone, university, college, course, year, major, rollNo, regNo, gender, dob } = req.body;
   const user = await db.get('SELECT id FROM users WHERE id = ?', req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  await db.run('UPDATE users SET firstName = ?, lastName = ?, phone = ?, university = ?, college = ?, course = ?, year = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', firstName, lastName, phone, university, college, course, year, req.user.id);
+  // The five academic/personal details use COALESCE(?, col): a client that
+  // does not send them (older cached bundle) keeps its stored values instead
+  // of having them overwritten with NULL, while an explicit '' still clears.
+  await db.run(`
+    UPDATE users SET firstName = ?, lastName = ?, phone = ?, university = ?,
+      college = ?, course = ?, year = ?,
+      major = COALESCE(?, major), rollNo = COALESCE(?, rollNo),
+      regNo = COALESCE(?, regNo), gender = COALESCE(?, gender), dob = COALESCE(?, dob),
+      updatedAt = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `, firstName, lastName, phone, university, college, course, year,
+    major ?? null, rollNo ?? null, regNo ?? null, gender ?? null, dob ?? null,
+    req.user.id);
 
-  const updated = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, year, role FROM users WHERE id = ?', req.user.id);
+  const updated = await db.get('SELECT id, firstName, lastName, email, phone, university, college, course, major, rollNo, regNo, gender, dob, year, role FROM users WHERE id = ?', req.user.id);
   if (updated && updated.course) updated.course = updated.course.toUpperCase();
   res.json({ message: 'Profile updated', user: updated });
 });

@@ -1,22 +1,25 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BookOpen, CalendarDays, GraduationCap, Landmark, XCircle } from 'lucide-react';
+import { AlertTriangle, BookMarked, BookOpen, CalendarDays, GraduationCap, Hash, Landmark, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePopup } from '../../context/PopupContext';
 import { studentApi, institutionApi } from '../../api';
 import { biharUniversities } from '../../data/biharUniversities';
+import { majorsForCourse, subjectGroups } from '../../data/courseMajors';
 import SearchableSelect from '../../components/SearchableSelect';
-import { PageLoader, EmptyState, Button, Card, Input, PasswordField } from '../../components/ui';
+import { PageLoader, EmptyState, Button, Input, PasswordField } from '../../components/ui';
+import { SectionCard, ViewRows, GENDER_OPTIONS, formatGender, formatDob } from '../../components/profile/ProfileSections';
 import PasswordHints from '../../components/ui/PasswordHints';
 import { passwordChecks, passwordPolicyError } from '../../passwordPolicy';
 import { UserIcon, ShieldCheckIcon, CheckIcon, PencilIcon, XIcon, BookOpenIcon } from '@animateicons/react/lucide';
 
-const initialForm = { firstName: '', lastName: '', email: '', phone: '', university: '', college: '', course: '', year: '' };
+const initialForm = { firstName: '', lastName: '', email: '', phone: '', university: '', college: '', course: '', year: '', major: '', rollNo: '', regNo: '', gender: '', dob: '' };
 type FormState = typeof initialForm;
 type SectionKey = 'personal' | 'academic';
 
 const mapUser = (u: any): FormState => ({
   firstName: u.firstName || '', lastName: u.lastName || '', email: u.email || '', phone: u.phone || '',
   university: u.university || '', college: u.college || '', course: u.course || '', year: u.year || '',
+  major: u.major || '', rollNo: u.rollNo || '', regNo: u.regNo || '', gender: u.gender || '', dob: u.dob || '',
 });
 
 export default function EditProfile() {
@@ -129,6 +132,10 @@ export default function EditProfile() {
   const strengthColor = ['', 'bg-red-500', 'bg-amber-500', 'bg-sky-500', 'bg-emerald-500'];
   const pw = pwStrength(passwords.newPassword);
 
+  // Same major list signup offered for the selected course (falls back to the
+  // grouped subject list when the course has no curated options).
+  const majorOptions = majorsForCourse(draft.course);
+
   const completeness = (() => {
     const fields: [string, string][] = [
       [draft.phone || form.phone, 'phone number'],
@@ -161,6 +168,8 @@ export default function EditProfile() {
     { icon: <Landmark size={15} />, label: 'University', value: form.university === 'other' ? 'Other' : (form.university || '') },
     { icon: <GraduationCap size={15} />, label: 'College', value: form.college },
     { icon: <BookOpen size={15} />, label: 'Course', value: form.course ? `${form.course.toUpperCase()}${form.year ? ` · Year ${form.year}` : ''}` : '' },
+    { icon: <BookMarked size={15} />, label: 'Major', value: form.major },
+    { icon: <Hash size={15} />, label: 'Roll No', value: form.rollNo },
     { icon: <CalendarDays size={15} />, label: 'Joined', value: user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '' },
   ];
 
@@ -238,6 +247,26 @@ export default function EditProfile() {
                 placeholder="Add your phone number"
                 autoFocus
               />
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="pf-gender" className="mb-1.5 block text-sm font-medium text-slate-700">Gender</label>
+                  <select
+                    id="pf-gender"
+                    value={draft.gender}
+                    onChange={(e) => setDraft({ ...draft, gender: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  >
+                    <option value="">Not specified</option>
+                    {GENDER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <Input
+                  label="Date of Birth"
+                  type="date"
+                  value={draft.dob}
+                  onChange={(e) => setDraft({ ...draft, dob: e.target.value })}
+                />
+              </div>
               <p className="text-xs text-slate-500">Name and email cannot be changed.</p>
             </form>
           ) : (
@@ -246,6 +275,8 @@ export default function EditProfile() {
               { label: 'Last Name', value: form.lastName },
               { label: 'Email', value: form.email },
               { label: 'Phone', value: form.phone },
+              { label: 'Gender', value: formatGender(form.gender) },
+              { label: 'Date of Birth', value: formatDob(form.dob) },
             ]} />
           )}
         </SectionCard>
@@ -296,6 +327,29 @@ export default function EditProfile() {
                 <Input label="Course" value={draft.course} onChange={(e) => setDraft({ ...draft, course: e.target.value })} required />
                 <Input label="Year" value={draft.year} onChange={(e) => setDraft({ ...draft, year: e.target.value })} required />
               </div>
+              <div>
+                <label htmlFor="pf-major" className="mb-1.5 block text-sm font-medium text-slate-700">Major / Subject</label>
+                <select
+                  id="pf-major"
+                  value={draft.major}
+                  disabled={!draft.course}
+                  onChange={(e) => setDraft({ ...draft, major: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  <option value="">{draft.course ? 'Select major / subject' : 'Select course first'}</option>
+                  {majorOptions.length > 0
+                    ? majorOptions.map((m) => <option key={m} value={m}>{m}</option>)
+                    : subjectGroups.map((g) => (
+                        <optgroup key={g.label} label={g.label}>
+                          {g.subjects.map((m) => <option key={`${g.label}-${m}`} value={m}>{m}</option>)}
+                        </optgroup>
+                      ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <Input label="Roll Number" value={draft.rollNo} onChange={(e) => setDraft({ ...draft, rollNo: e.target.value })} placeholder="e.g. 21CS001" />
+                <Input label="Registration No." value={draft.regNo} onChange={(e) => setDraft({ ...draft, regNo: e.target.value })} placeholder="University registration number" />
+              </div>
             </form>
           ) : (
             <ViewRows rows={[
@@ -303,6 +357,9 @@ export default function EditProfile() {
               { label: 'College', value: form.college },
               { label: 'Course', value: form.course.toUpperCase() },
               { label: 'Year', value: form.year },
+              { label: 'Major / Subject', value: form.major },
+              { label: 'Roll Number', value: form.rollNo },
+              { label: 'Registration No.', value: form.regNo },
             ]} />
           )}
         </SectionCard>
@@ -364,53 +421,6 @@ export default function EditProfile() {
         </div>
       )}
     </div>
-  );
-}
-
-function SectionCard({ id, icon, title, subtitle, action, error, children }: {
-  id: string;
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  action?: React.ReactNode;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Card id={id} className="overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">{icon}</div>
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-            <p className="text-xs text-slate-500">{subtitle}</p>
-          </div>
-        </div>
-        {action && <div className="shrink-0">{action}</div>}
-      </div>
-      {error && (
-        <div className="mx-6 mt-4 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-100"><XCircle size={15} /></span>
-          {error}
-        </div>
-      )}
-      <div className="p-6">{children}</div>
-    </Card>
-  );
-}
-
-function ViewRows({ rows }: { rows: { label: string; value: string }[] }) {
-  return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
-      {rows.map((r) => (
-        <div key={r.label}>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{r.label}</dt>
-          <dd className="mt-1 text-sm font-medium text-slate-900">
-            {r.value || <span className="font-normal text-slate-500">Not provided</span>}
-          </dd>
-        </div>
-      ))}
-    </dl>
   );
 }
 

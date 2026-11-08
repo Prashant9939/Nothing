@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect, Suspense } from 'react';
-import { LogOutIcon, ChevronLeftIcon, SearchIcon, BellIcon, LayoutDashboardIcon, BookOpenIcon, UsersIcon, CreditCardIcon, FileTextIcon, LightbulbIcon, GlobeIcon, MegaphoneIcon, ClipboardIcon, SettingsIcon, ChartPieIcon, MessageSquareIcon, HandCoinsIcon, ShieldUserIcon } from "@animateicons/react/lucide";
+import { LogOutIcon, ChevronLeftIcon, SearchIcon, BellIcon, LayoutDashboardIcon, BookOpenIcon, UsersIcon, CreditCardIcon, FileTextIcon, LightbulbIcon, GlobeIcon, MegaphoneIcon, ClipboardIcon, SettingsIcon, ChartPieIcon, MessageSquareIcon, HandCoinsIcon, ShieldUserIcon, UserIcon } from "@animateicons/react/lucide";
 import { PageSkeleton, HamburgerButton, MobileMenuSheet, menuItemClass, glCtaClass } from './ui';
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -18,6 +18,7 @@ const iconMap: Record<string, React.ReactNode> = {
   institutions: <GlobeIcon size={20} />,
   announcements: <MegaphoneIcon size={20} />,
   issues: <MessageSquareIcon size={20} />,
+  profile: <UserIcon size={20} />,
   settings: <SettingsIcon size={20} />,
 };
 
@@ -48,6 +49,7 @@ export default function AdminLayout() {
     { path: '/admin/announcements', label: 'Announcements', icon: 'announcements' },
     { path: '/admin/issues', label: 'Issues', icon: 'issues' },
     { path: '/admin/settings', label: 'Settings', icon: 'settings' },
+    { path: '/admin/profile', label: 'Profile', icon: 'profile' },
   ];
 
   return (
@@ -185,6 +187,14 @@ export default function AdminLayout() {
                     <p className="text-sm font-semibold text-gray-900 truncate">{user?.firstName} {user?.lastName}</p>
                     <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                   </div>
+                  <Link
+                    to="/admin/profile"
+                    onClick={() => setProfileOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <UserIcon size={14} />
+                    Profile
+                  </Link>
                   <Link
                     to="/admin/settings"
                     onClick={() => setProfileOpen(false)}

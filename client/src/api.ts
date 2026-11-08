@@ -141,6 +141,10 @@ export interface User {
   course: string;
   major?: string;
   year: string;
+  rollNo?: string;
+  regNo?: string;
+  gender?: string;
+  dob?: string;
   role: string;
   partnerName?: string;
   accountStatus?: string;
@@ -333,6 +337,9 @@ export const authApi = {
   logout: () =>
     api.post('/auth/logout').then((r) => { invalidateDashboard(); return r; }),
   getProfile: () => api.get<{ user: User }>('/auth/profile'),
+  // Admin & partner profile editing (students use studentApi.updateProfile).
+  updateProfile: (data: any) =>
+    api.put('/auth/profile', data).then((r) => { invalidateDashboard(); return r; }),
   checkSession: () => api.get<{ valid: boolean; user: User }>('/auth/check'),
   verifyCertificate: (certificateId: string) => api.post('/auth/verify-certificate', { certificateId }),
   getInternships: () => api.get<{ internships: Internship[] }>('/auth/internships'),

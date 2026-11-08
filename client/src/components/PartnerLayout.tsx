@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect, Suspense } from 'react';
-import { LogOutIcon, ChevronLeftIcon, LayoutDashboardIcon, UsersIcon, CreditCardIcon, FileTextIcon } from '@animateicons/react/lucide';
+import { LogOutIcon, ChevronLeftIcon, LayoutDashboardIcon, UsersIcon, CreditCardIcon, FileTextIcon, UserIcon } from '@animateicons/react/lucide';
 import { PageSkeleton, HamburgerButton, MobileMenuSheet, menuItemClass, glCtaClass, ErrorBoundary } from './ui';
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -9,6 +9,7 @@ const iconMap: Record<string, React.ReactNode> = {
   students: <UsersIcon size={20} />,
   payments: <CreditCardIcon size={20} />,
   documents: <FileTextIcon size={20} />,
+  profile: <UserIcon size={20} />,
 };
 
 const links = [
@@ -16,6 +17,7 @@ const links = [
   { path: '/partner/students', label: 'Students', icon: 'students' },
   { path: '/partner/payments', label: 'Payments', icon: 'payments' },
   { path: '/partner/documents', label: 'Documents', icon: 'documents' },
+  { path: '/partner/profile', label: 'Profile', icon: 'profile' },
 ];
 
 function titleFor(path: string): string {
@@ -166,6 +168,14 @@ export default function PartnerLayout() {
                     <p className="text-sm font-semibold text-gray-900 truncate">{user?.firstName} {user?.lastName}</p>
                     <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                   </div>
+                  <Link
+                    to="/partner/profile"
+                    onClick={() => setProfileOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <UserIcon size={14} />
+                    Profile
+                  </Link>
                   <button
                     type="button"
                     onClick={handleLogout}

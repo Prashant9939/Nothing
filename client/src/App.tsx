@@ -44,6 +44,11 @@ const AdminAnnouncements = lazy(lazyRoute('/admin/announcements', () => import('
 const AdminIssues = lazy(lazyRoute('/admin/issues', () => import('./pages/admin/Issues')));
 const AdminQuestions = lazy(lazyRoute('/admin/questions', () => import('./pages/admin/Questions')));
 const AdminSettings = lazy(lazyRoute('/admin/settings', () => import('./pages/admin/Settings')));
+// One profile page serves admins and partners; the loader is registered under
+// both hrefs so hovering either sidebar link prefetches the same single chunk.
+const accountProfileLoader = () => import('./pages/AccountProfile');
+const AccountProfile = lazy(lazyRoute('/admin/profile', accountProfileLoader));
+lazyRoute('/partner/profile', accountProfileLoader);
 const AdminLayout = lazy(lazyLayout('/admin', () => import('./components/AdminLayout')));
 const StudentLayout = lazy(lazyLayout('/student', () => import('./components/StudentLayout')));
 
@@ -137,6 +142,7 @@ function App() {
               <Route path="announcements" element={<AdminAnnouncements />} />
               <Route path="issues" element={<AdminIssues />} />
               <Route path="settings" element={<AdminSettings />} />
+              <Route path="profile" element={<AccountProfile />} />
             </Route>
 
             {/* Partner Routes (portal; public landing lives at /partners) */}
@@ -145,6 +151,7 @@ function App() {
               <Route path="students" element={<PartnerStudents />} />
               <Route path="payments" element={<PartnerPayments />} />
               <Route path="documents" element={<PartnerDocuments />} />
+              <Route path="profile" element={<AccountProfile />} />
             </Route>
 
             {/* Student Routes */}
