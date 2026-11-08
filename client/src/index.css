@@ -3,6 +3,12 @@
 @theme {
   /* Typography — Inter everywhere */
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  /* Editorial bento type system (student portal): display headings, body and
+     data labels. Loaded async alongside Inter; every stack falls back to
+     Inter/system so text stays readable before the webfonts land. */
+  --font-display: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-jakarta: 'Plus Jakarta Sans', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Brand palette — Slate + Emerald */
   --color-primary: #0f172a;         /* slate-900 */
@@ -15,6 +21,20 @@
   --color-ink: #0f172a;
   --color-muted: #64748b;
 
+  /* Editorial bento palette (student portal): warm cream canvas, 1px sand
+     borders, burnt-orange accent. `noir` is the mockup's #111111 — kept as its
+     own token so it never clobbers the existing slate `ink`. */
+  --color-cream: #f3eee3;
+  --color-alabaster: #faf7f0;
+  --color-sand: #e6dfd1;
+  --color-sand-dark: #d5cbb8;
+  --color-charcoal: #5c5852;
+  --color-burnt: #d9541e;
+  --color-burnt-dark: #b84314;
+  --color-burnt-tint: #f9e6de;
+  --color-noir: #111111;
+  --color-noir-card: #181818;
+
   /* Legacy dark gradients (marketing + sidebars) */
   --color-dark: #0f172a;
   --color-dark-light: #1e293b;
@@ -23,6 +43,12 @@
   --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
   --shadow-lift: 0 4px 6px rgba(15, 23, 42, 0.04), 0 12px 32px rgba(15, 23, 42, 0.10);
 
+  /* Bento elevation scale (editorial) */
+  --shadow-bento: 0 2px 6px -1px rgba(17, 17, 17, 0.04), 0 1px 2px -1px rgba(17, 17, 17, 0.03);
+  --shadow-bento-hover: 0 14px 28px -8px rgba(17, 17, 17, 0.09), 0 4px 10px -3px rgba(217, 84, 30, 0.08);
+  --shadow-ink-spotlight: 0 22px 40px -12px rgba(17, 17, 17, 0.32);
+  --shadow-dock: 0 18px 38px -10px rgba(17, 17, 17, 0.25);
+
   /* Motion */
   --animate-float: float 6s ease-in-out infinite;
   --animate-fade-in-up: fade-in-up 0.6s ease-out;
@@ -30,6 +56,7 @@
   --animate-fade-in: fade-in 0.35s ease-out;
   --animate-page-in: page-in 0.15s cubic-bezier(0.22, 1, 0.36, 1);
   --animate-pop-in: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-radar-ping: radar-ping 1.9s cubic-bezier(0, 0, 0.2, 1) infinite;
   --animate-qr-glow: qr-glow 3s ease-in-out infinite;
   --animate-qr-bracket: qr-bracket 2.8s ease-in-out infinite;
   --animate-qr-sheen: qr-sheen 3.4s ease-in-out infinite;
@@ -88,6 +115,12 @@
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Live status pill: ring expands and fades out from the pulsing dot */
+@keyframes radar-ping {
+  0% { transform: scale(1); opacity: 0.85; }
+  75%, 100% { transform: scale(2.4); opacity: 0; }
 }
 
 /* Route change: new page slides up gently while fading in.
@@ -315,6 +348,30 @@
     opacity: 1;
     transform: none;
   }
+
+  /* Editorial bento: ink spotlight mesh — radial burnt glow over a 24px grid
+     (the signature texture of the hero card and the floating dock). */
+  .noir-mesh {
+    background-color: #111111;
+    background-image:
+      radial-gradient(circle at 92% 12%, rgba(217, 84, 30, 0.28) 0%, transparent 48%),
+      radial-gradient(circle at 10% 90%, rgba(243, 238, 227, 0.05) 0%, transparent 45%),
+      linear-gradient(to right, rgba(243, 238, 227, 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(243, 238, 227, 0.035) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 24px 24px, 24px 24px;
+  }
+
+  /* Editorial bento: card hover micro-physics — 2px lift with an accent-tinted
+     shadow. Layered so explicit hover:-translate-* utilities still win. */
+  .bento-card {
+    transition:
+      transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 0.22s ease;
+  }
+  .bento-card:hover {
+    transform: translateY(-2px);
+  }
 }
 
 /* Systems with reduced motion enabled: still fade in, but no slide */
@@ -328,6 +385,10 @@
      moment on auth pages and plays regardless of the OS setting. */
   .animate-logo-breathe,
   .animate-panel-sheen {
+    animation: none;
+  }
+  /* Bento live pill: drop the infinite ring pulse (dot stays static) */
+  .animate-radar-ping {
     animation: none;
   }
 }

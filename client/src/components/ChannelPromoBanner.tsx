@@ -34,8 +34,8 @@ const AVATARS = [
 function QrBox({ className = '' }: { className?: string }) {
   return (
     <div className={`relative ${className}`}>
-      {/* soft emerald glow that breathes behind the card */}
-      <span className="pointer-events-none absolute -inset-2 animate-qr-glow rounded-3xl bg-emerald-400/30 blur-lg" />
+      {/* soft burnt-orange glow that breathes behind the card */}
+      <span className="pointer-events-none absolute -inset-2 animate-qr-glow rounded-3xl bg-burnt/25 blur-lg" />
       <div className="relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
         {/* rounded/gradient QR with iQ logo center — sheen sweeps across */}
         <div className="relative mx-auto h-40 w-40 overflow-hidden rounded-lg sm:h-44 sm:w-44">
@@ -47,10 +47,10 @@ function QrBox({ className = '' }: { className?: string }) {
           <span className="pointer-events-none absolute inset-y-0 -left-16 w-16 animate-qr-sheen bg-gradient-to-r from-transparent via-white/55 to-transparent" />
         </div>
         {/* breathing corner brackets */}
-        <span className="absolute -left-2 -top-2 h-7 w-7 animate-qr-bracket rounded-tl-lg border-[3px] border-b-0 border-r-0 border-emerald-500 [transform-origin:100%_100%]" />
-        <span className="absolute -right-2 -top-2 h-7 w-7 animate-qr-bracket rounded-tr-lg border-[3px] border-b-0 border-l-0 border-emerald-500 [animation-delay:0.15s] [transform-origin:0_100%]" />
-        <span className="absolute -bottom-2 -left-2 h-7 w-7 animate-qr-bracket rounded-bl-lg border-[3px] border-r-0 border-t-0 border-emerald-500 [animation-delay:0.3s] [transform-origin:100%_0]" />
-        <span className="absolute -bottom-2 -right-2 h-7 w-7 animate-qr-bracket rounded-br-lg border-[3px] border-l-0 border-t-0 border-emerald-500 [animation-delay:0.45s] [transform-origin:0_0]" />
+        <span className="absolute -left-2 -top-2 h-7 w-7 animate-qr-bracket rounded-tl-lg border-[3px] border-b-0 border-r-0 border-burnt [transform-origin:100%_100%]" />
+        <span className="absolute -right-2 -top-2 h-7 w-7 animate-qr-bracket rounded-tr-lg border-[3px] border-b-0 border-l-0 border-burnt [animation-delay:0.15s] [transform-origin:0_100%]" />
+        <span className="absolute -bottom-2 -left-2 h-7 w-7 animate-qr-bracket rounded-bl-lg border-[3px] border-r-0 border-t-0 border-burnt [animation-delay:0.3s] [transform-origin:100%_0]" />
+        <span className="absolute -bottom-2 -right-2 h-7 w-7 animate-qr-bracket rounded-br-lg border-[3px] border-l-0 border-t-0 border-burnt [animation-delay:0.45s] [transform-origin:0_0]" />
       </div>
     </div>
   );
@@ -63,7 +63,7 @@ function JoinButton({ btnRef, className = '' }: { btnRef?: React.Ref<HTMLAnchorE
       href={CHANNEL_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className={`flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#25D366] to-[#16a34a] px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(22,163,74,0.35)] transition-all hover:-translate-y-0.5 hover:from-[#20c25c] hover:to-[#158f41] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${className}`}
+      className={`flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-burnt to-burnt-dark px-4 py-3.5 text-[15px] font-bold text-cream shadow-[0_10px_28px_rgba(217,84,30,0.35)] transition-all hover:-translate-y-0.5 hover:from-burnt-dark hover:to-[#a03d14] focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/50 ${className}`}
     >
       <MessageCircle size={19} className="fill-white/20" />
       Join WhatsApp Channel
@@ -133,7 +133,7 @@ export default function ChannelPromoBanner() {
         <button
           onClick={close}
           aria-label="Close"
-          className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-slate-200 transition-all hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+          className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-slate-200 transition-all hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40"
         >
           <X size={18} />
         </button>
@@ -142,8 +142,8 @@ export default function ChannelPromoBanner() {
         <div className="relative z-10 px-6 pb-7 pt-7 sm:px-8 sm:pt-8 lg:pb-8">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-3 pr-12">
             <img src="/logo/logo-trimmed.png" alt="IQIntern" width={512} height={188} loading="lazy" decoding="async" className="h-9 w-auto" />
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-200/70">
-              <BadgeCheck size={14} className="text-emerald-600" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-orange-700 ring-1 ring-inset ring-orange-200/70">
+              <BadgeCheck size={14} className="text-orange-600" />
               Official IQIntern Channel
             </span>
           </div>
@@ -161,14 +161,14 @@ export default function ChannelPromoBanner() {
 
             {/* 3D-style WhatsApp tile + sticker (desktop) */}
             <div className="relative hidden shrink-0 rotate-[-6deg] lg:block">
-              <div className="flex h-16 w-16 items-center justify-center rounded-[20px] bg-gradient-to-br from-emerald-400 via-[#25D366] to-emerald-600 shadow-[0_16px_34px_rgba(37,211,102,0.45)] ring-4 ring-white">
+              <div className="flex h-16 w-16 items-center justify-center rounded-[20px] bg-gradient-to-br from-orange-400 via-burnt to-orange-600 shadow-[0_16px_34px_rgba(217,84,30,0.45)] ring-4 ring-white">
                 <MessageCircle className="h-8 w-8 text-white" strokeWidth={2.4} />
               </div>
-              <div className="absolute -right-14 -top-10 w-28 rotate-[7deg] rounded-xl bg-emerald-500 px-2 py-1.5 text-center text-[10px] font-bold leading-tight text-white shadow-lg">
+              <div className="absolute -right-14 -top-10 w-28 rotate-[7deg] rounded-xl bg-burnt px-2 py-1.5 text-center text-[10px] font-bold leading-tight text-white shadow-lg">
                 Don't Miss Your Next Opportunity!
               </div>
-              <span className="absolute -left-7 top-2 h-4 w-1.5 rotate-[-35deg] rounded-full bg-emerald-400" />
-              <span className="absolute -left-6 top-9 h-4 w-1.5 rotate-[-35deg] rounded-full bg-emerald-300" />
+              <span className="absolute -left-7 top-2 h-4 w-1.5 rotate-[-35deg] rounded-full bg-orange-400" />
+              <span className="absolute -left-6 top-9 h-4 w-1.5 rotate-[-35deg] rounded-full bg-orange-300" />
               <span className="absolute -bottom-4 right-0 h-1.5 w-5 rotate-45 rounded-full bg-amber-400" />
             </div>
           </div>
@@ -227,7 +227,7 @@ export default function ChannelPromoBanner() {
             <button
               onClick={() => setShowMobileQr((v) => !v)}
               aria-expanded={showMobileQr}
-              className="mt-4 flex w-full items-center justify-center gap-1.5 text-xs font-bold text-emerald-700 transition-colors hover:text-emerald-800"
+              className="mt-4 flex w-full items-center justify-center gap-1.5 text-xs font-bold text-burnt transition-colors hover:text-burnt-dark"
             >
               <QrCode size={14} />
               Or scan with laptop / another phone
@@ -242,7 +242,7 @@ export default function ChannelPromoBanner() {
         </div>
 
         {/* ---------- Right: scan-to-join (desktop) ---------- */}
-        <aside className="relative z-0 hidden flex-col border-l border-emerald-100 bg-gradient-to-b from-emerald-50 via-emerald-50/60 to-white px-8 py-8 lg:flex">
+        <aside className="relative z-0 hidden flex-col border-l border-orange-100 bg-gradient-to-b from-orange-50 via-orange-50/60 to-white px-8 py-8 lg:flex">
           <div className="text-center">
             <h3 className="text-2xl font-extrabold tracking-tight text-slate-900">Scan to Join</h3>
             <p className="mx-auto mt-2 max-w-[17rem] text-sm leading-relaxed text-slate-600">
@@ -255,7 +255,7 @@ export default function ChannelPromoBanner() {
           </div>
 
           <div className="mx-auto mt-5 flex items-center gap-2 rounded-full bg-white px-3.5 py-2 shadow-sm ring-1 ring-slate-100">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#25D366]">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-burnt">
               <MessageCircle size={13} className="text-white" />
             </span>
             <BadgeCheck size={15} className="text-blue-500" />
@@ -266,12 +266,12 @@ export default function ChannelPromoBanner() {
             <JoinButton />
             <button
               onClick={close}
-              className="mt-3 w-full rounded-xl bg-white py-3 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+              className="mt-3 w-full rounded-xl bg-white py-3 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40"
             >
               Maybe Later
             </button>
             <div className="mt-5 flex items-center justify-center gap-1.5 text-[11px] font-medium text-slate-500">
-              <ShieldCheck size={14} className="text-emerald-600" />
+              <ShieldCheck size={14} className="text-orange-600" />
               Free to join&nbsp; •&nbsp; Official IQIntern updates&nbsp; •&nbsp; No spam
             </div>
           </div>
