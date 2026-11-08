@@ -205,8 +205,11 @@ export default function PartnerLayout() {
 
         {/* Content */}
         <main className="p-4 sm:p-6 lg:p-8">
+          {/* Keyed by path on purpose: fresh never-revealed boundary per route,
+              so a slow chunk shows the skeleton instead of freezing on the
+              previous page (see StudentLayout). */}
           <ErrorBoundary>
-            <Suspense fallback={<PageSkeleton label="Loading page..." />}>
+            <Suspense key={location.pathname} fallback={<PageSkeleton label="Loading page..." />}>
               <div key={location.pathname} className="animate-page-in">
                 <Outlet />
               </div>

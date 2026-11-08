@@ -234,7 +234,9 @@ export default function AdminLayout() {
 
         {/* Content */}
         <main className="p-4 sm:p-6 lg:p-8">
-          <Suspense fallback={<PageSkeleton label="Loading page..." />}>
+          {/* Keyed by path: a fresh never-revealed boundary per route, so a
+              slow chunk shows the skeleton instead of freezing on the old page. */}
+          <Suspense key={location.pathname} fallback={<PageSkeleton label="Loading page..." />}>
             <div key={location.pathname} className="animate-page-in">
               <Outlet />
             </div>

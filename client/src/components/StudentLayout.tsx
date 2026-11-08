@@ -347,8 +347,14 @@ export default function StudentLayout() {
 
         {/* Content */}
         <main className="p-4 sm:p-6 lg:p-8">
+          {/* Keyed by path on purpose: every navigation mounts a FRESH,
+              never-revealed Suspense boundary. Without the key a route chunk
+              that is slow or never resolves suspends inside a boundary that
+              already revealed the previous page, so React keeps that page on
+              screen — URL moves, no skeleton, no error (the navigation freeze
+              reproduced on production with /student/documents). */}
           <ErrorBoundary>
-            <Suspense fallback={<PageSkeleton label="Loading page..." />}>
+            <Suspense key={location.pathname} fallback={<PageSkeleton label="Loading page..." />}>
               <div key={location.pathname} className="animate-page-in">
                 <Outlet />
               </div>
