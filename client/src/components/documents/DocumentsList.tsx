@@ -32,6 +32,36 @@ const FOOT_LABELS: Record<DocCategory, string | null> = {
   ACADEMIC: 'Evaluation',
 };
 
+/* ── PDF blob cache ────────────────────────────────────────────────────
+   A document's bytes don't change between clicks, so each fetched blob is
+   kept for a short window: repeat downloads and previews resolve instantly
+   with zero network. Keyed by URL (URLs embed the payment/enrollment/
+   certificate ids, so tracks never collide), LRU-capped so a full dossier
+   fits, and time-boxed so edited data is refetched after the TTL.
+   In-memory only — never persisted, cleared on reload. */
+const PDF_TTL_MS = 120_000;
+const PDF_CACHE_MAX = 32;
+const pdfCache = new Map<string, { blob: Blob; at: number }>();
+
+function pdfCacheGet(url: string): Blob | null {
+  const hit = pdfCache.get(url);
+  if (!hit) return null;
+  if (Date.now() - hit.at > PDF_TTL_MS) { pdfCache.delete(url); return null; }
+  pdfCache.delete(url); // re-insert = recency refresh for the size cap
+  pdfCache.set(url, hit);
+  return hit.blob;
+}
+
+function pdfCacheSet(url: string, blob: Blob) {
+  pdfCache.delete(url);
+  pdfCache.set(url, { blob, at: Date.now() });
+  while (pdfCache.size > PDF_CACHE_MAX) {
+    const oldest = pdfCache.keys().next().value;
+    if (oldest === undefined) break;
+    pdfCache.delete(oldest);
+  }
+}
+
 interface DocDef {
   key: string;
   category: DocCategory;
@@ -92,6 +122,8 @@ export default function DocumentsList() {
   useEffect(() => { load(); }, []);
 
   const fetchPdf = async (url: string, label: string, verb: 'Downloading' | 'Opening') => {
+    const cached = pdfCacheGet(url);
+    if (cached) return cached; // repeat action: instant, no round trip
     const token = sessionStorage.getItem('token');
     try {
       const r = await fetch(url, {
@@ -102,7 +134,9 @@ export default function DocumentsList() {
         signal: AbortSignal.timeout(60000),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.blob();
+      const blob = await r.blob();
+      pdfCacheSet(url, blob);
+      return blob;
     } catch (err) {
       const timedOut = err instanceof DOMException && err.name === 'TimeoutError';
       popup.error(
@@ -113,6 +147,21 @@ export default function DocumentsList() {
       );
       throw err;
     }
+  };
+
+  /* Warm the blob cache on hover/focus so the click that follows is
+     instant. Failures are swallowed here — prefetching is an optimization;
+     the real click still surfaces errors through fetchPdf(). */
+  const prefetchPdf = (url?: string) => {
+    if (!url || pdfCacheGet(url)) return;
+    const token = sessionStorage.getItem('token');
+    fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(60000),
+    })
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((blob) => { if (blob) pdfCacheSet(url, blob); })
+      .catch(() => {});
   };
 
   const download = async (url: string, filename: string) => {
@@ -307,13 +356,25 @@ export default function DocumentsList() {
     const queue = docs.filter((d) => !d.locked && d.href);
     if (!queue.length) return;
     setBatch({ done: 0, total: queue.length });
-    try {
-      for (const d of queue) {
-        await downloadDoc(d);
-        setBatch((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev));
+    // Three at a time: every PDF costs an auth + DB round trip to the
+    // pooler plus a render, so overlapping them turns 9 back-to-back waits
+    // into ~3 waves. done counts successful files only, so a failed item
+    // never inflates the meter and never aborts the rest of the batch.
+    let next = 0;
+    const worker = async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= queue.length) return;
+        try {
+          await downloadDoc(queue[i]);
+          setBatch((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev));
+        } catch {
+          // download() already surfaced the exact error to the user
+        }
       }
-    } catch {
-      // download() already surfaced the exact error to the user
+    };
+    try {
+      await Promise.all([worker(), worker(), worker()]);
     } finally {
       setBatch(null);
     }
@@ -333,6 +394,7 @@ export default function DocumentsList() {
         lockReason={d.lockReason}
         onDownload={!d.locked && d.href ? () => downloadDoc(d) : undefined}
         onPreview={!d.locked && d.href ? () => previewDoc(d) : undefined}
+        onPrefetch={!d.locked && d.href ? () => prefetchPdf(d.href) : undefined}
       />
     );
   };

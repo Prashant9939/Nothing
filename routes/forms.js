@@ -430,6 +430,8 @@ async function streamForm(res, key, ctx = {}) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename=${form.filename}`);
+  // Private browser-cache window (see startPdf in routes/documents.js).
+  res.setHeader('Cache-Control', 'private, max-age=120');
   doc.pipe(res);
   const body = { ...ctx, qr };
   const y = form.header ? form.header(doc, body) : defaultHeader(doc, form, qr);

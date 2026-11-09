@@ -12,6 +12,8 @@ interface DocCardProps {
   onDownload?: () => Promise<void>;
   /** Streams the PDF into a new tab (blob URL, auth headers). */
   onPreview?: () => Promise<string>;
+  /** Warms the blob cache on hover/focus so the click resolves instantly. */
+  onPrefetch?: () => void;
   /** Locked cards render as inert placeholders with a reason. */
   locked?: boolean;
   lockReason?: string;
@@ -19,7 +21,7 @@ interface DocCardProps {
 
 export default function DocCard({
   icon, title, seq, categoryLabel, tone = 'tint',
-  onDownload, onPreview, locked, lockReason,
+  onDownload, onPreview, onPrefetch, locked, lockReason,
 }: DocCardProps) {
   const [busy, setBusy] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -76,7 +78,11 @@ export default function DocCard({
     : 'border-sand bg-cream text-ink';
 
   return (
-    <article className="bento-card group flex flex-col rounded-[24px] border border-sand bg-alabaster p-4 shadow-bento hover:border-sand-dark">
+    <article
+      className="bento-card group flex flex-col rounded-[24px] border border-sand bg-alabaster p-4 shadow-bento hover:border-sand-dark"
+      onPointerEnter={() => onPrefetch?.()}
+      onFocus={() => onPrefetch?.()}
+    >
       <div className="flex items-start gap-3">
         <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${well}`}>
           {icon}

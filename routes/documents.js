@@ -26,33 +26,27 @@ const { resolveVerifyBase } = require('../lib/verifyBase');
 
 const router = express.Router();
 
-const hasPaidAccess = async (enrollmentId, userId) => !!await db.get("SELECT 1 FROM payments WHERE enrollmentId = ? AND userId = ? AND status = 'completed' LIMIT 1", enrollmentId, userId);
-
-// Paid + latest exam + enrollment status in ONE round trip (was up to 3
-// serial SELECTs per document download).
-const hasPassedAccess = async (enrollmentId, userId) => {
-  const row = await db.get(`
-    SELECT
-      EXISTS(SELECT 1 FROM payments WHERE enrollmentId = ? AND userId = ? AND status = 'completed') AS paid,
-      (SELECT status FROM exams WHERE enrollmentId = ? ORDER BY id DESC LIMIT 1) AS examStatus,
-      (SELECT status FROM enrollments WHERE id = ? AND userId = ?) AS enrollmentStatus
-  `, enrollmentId, userId, enrollmentId, enrollmentId, userId);
-  if (!row || !row.paid) return false;
-  if (row.examStatus === 'completed') return true;
-  return row.enrollmentStatus === 'completed';
-};
-
 // Shared loader for the exam-gated documents below. Ownership is enforced by
 // canAccessStudent after the fetch so partners/admins can load a row too.
+// The payment + latest-exam gates ride along in this same statement: each
+// separate SELECT costs a ~330ms round trip to the Supabase pooler, so the
+// gate became passedGate(row) instead of its own query on every download.
 const loadEnrollment = (enrollmentId) => db.get(`
   SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, u.year,
          u.rollNo, u.regNo, u.university, u.major as userMajor,
-         i.title as internshipTitle, i.duration, i.modules, i.category
+         i.title as internshipTitle, i.duration, i.modules, i.category,
+         EXISTS(SELECT 1 FROM payments WHERE enrollmentId = e.id AND userId = e.userId AND status = 'completed') AS paid,
+         (SELECT status FROM exams WHERE enrollmentId = e.id ORDER BY id DESC LIMIT 1) AS examStatus
   FROM enrollments e
   JOIN users u ON e.userId = u.id
   JOIN internships i ON e.internshipId = i.id
   WHERE e.id = ?
 `, enrollmentId);
+
+// The exact gate the old hasPaidAccess()/hasPassedAccess() helpers enforced
+// (paid AND — latest exam completed OR enrollment completed), evaluated on the
+// columns loadEnrollment already returned: zero extra round trips.
+const passedGate = (row) => !!row.paid && (row.examStatus === 'completed' || row.status === 'completed');
 
 // Row-level access for downloads: the student who owns the row, an admin, or
 // the partner the student is attributed to (account-level users.partnerId or
@@ -272,6 +266,10 @@ function startPdf(res, filename, opts = {}) {
   const doc = new PDFDocument({ size: 'A4', margin: 50, ...opts });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+  // Authenticated PDF: let the browser's PRIVATE cache replay repeats for a
+  // couple of minutes (`private` forbids shared caches; the client's blob
+  // cache covers the same window). Cuts repeat downloads to ~0ms.
+  res.setHeader('Cache-Control', 'private, max-age=120');
   doc.pipe(res);
   // `plain` documents (the daily log sheet) carry their own minimal frame and
   // must stay clean white — no watermark, corner sweep, accents or waves.
@@ -539,7 +537,8 @@ router.get('/download/receipt/:paymentId', authenticateToken, async (req, res) =
 // ===================== OFFER LETTER =====================
 router.get('/download/offer-letter/:enrollmentId', authenticateToken, async (req, res) => {
   const enrollment = await db.get(`
-    SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, i.title as internshipTitle, i.duration
+    SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, i.title as internshipTitle, i.duration,
+           EXISTS(SELECT 1 FROM payments WHERE enrollmentId = e.id AND userId = e.userId AND status = 'completed') AS paid
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
@@ -547,7 +546,7 @@ router.get('/download/offer-letter/:enrollmentId', authenticateToken, async (req
   `, req.params.enrollmentId);
 
   if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPaidAccess(enrollment.id, enrollment.userId))) {
+  if (!enrollment.paid) {
     return res.status(403).json({ error: 'Complete payment to download the offer letter.' });
   }
 
@@ -626,7 +625,8 @@ router.get('/download/offer-letter/:enrollmentId', authenticateToken, async (req
 router.get('/download/certificate/:certId', authenticateToken, async (req, res) => {
   const cert = await db.get(`
     SELECT c.*, u.firstName, u.lastName, u.email, u.college, u.course, u.rollNo, u.regNo, u.university, u.year,
-           i.title as internshipTitle, i.duration, i.modules, i.description, e.enrolledAt
+           i.title as internshipTitle, i.duration, i.modules, i.description, e.enrolledAt,
+           EXISTS(SELECT 1 FROM payments WHERE enrollmentId = c.enrollmentId AND userId = c.userId AND status = 'completed') AS paid
     FROM certificates c
     JOIN users u ON c.userId = u.id
     JOIN enrollments e ON c.enrollmentId = e.id
@@ -635,7 +635,7 @@ router.get('/download/certificate/:certId', authenticateToken, async (req, res) 
   `, req.params.certId);
 
   if (!cert || !(await canAccessStudent(req, cert.userId))) return res.status(404).json({ error: 'Certificate not found' });
-  if (!(await hasPaidAccess(cert.enrollmentId, cert.userId))) {
+  if (!cert.paid) {
     return res.status(403).json({ error: 'Complete payment to download the certificate.' });
   }
 
@@ -851,7 +851,8 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
   const enrollment = await db.get(`
     SELECT e.*, u.firstName, u.lastName, u.email, u.phone, u.college, u.course, u.year,
            u.rollNo, u.regNo, u.university, u.major,
-           i.title as internshipTitle, i.topics, i.duration, i.modules, i.category, i.description
+           i.title as internshipTitle, i.topics, i.duration, i.modules, i.category, i.description,
+           EXISTS(SELECT 1 FROM payments WHERE enrollmentId = e.id AND userId = e.userId AND status = 'completed') AS paid
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
@@ -859,7 +860,7 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
   `, req.params.enrollmentId);
 
   if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPaidAccess(enrollment.id, enrollment.userId))) {
+  if (!enrollment.paid) {
     return res.status(403).json({ error: 'Complete payment to download the internship report.' });
   }
 
@@ -915,7 +916,8 @@ router.get('/download/project-report/:enrollmentId', authenticateToken, async (r
 // ===================== ATTENDANCE SHEET =====================
 router.get('/download/attendance/:enrollmentId', authenticateToken, async (req, res) => {
   const enrollment = await db.get(`
-    SELECT e.*, u.firstName, u.lastName, u.college, i.title as internshipTitle, i.duration
+    SELECT e.*, u.firstName, u.lastName, u.college, i.title as internshipTitle, i.duration,
+           EXISTS(SELECT 1 FROM payments WHERE enrollmentId = e.id AND userId = e.userId AND status = 'completed') AS paid
     FROM enrollments e
     JOIN users u ON e.userId = u.id
     JOIN internships i ON e.internshipId = i.id
@@ -923,7 +925,7 @@ router.get('/download/attendance/:enrollmentId', authenticateToken, async (req, 
   `, req.params.enrollmentId);
 
   if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPaidAccess(enrollment.id, enrollment.userId))) {
+  if (!enrollment.paid) {
     return res.status(403).json({ error: 'Complete payment to download the attendance sheet.' });
   }
 
@@ -1154,7 +1156,7 @@ function streamLogBook(res, d) {
 router.get('/download/log-book/:enrollmentId', authenticateToken, async (req, res) => {
   const enrollment = await loadEnrollment(req.params.enrollmentId);
   if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPassedAccess(enrollment.id, enrollment.userId))) {
+  if (!passedGate(enrollment)) {
     return res.status(403).json({ error: 'Pass the exam to download the daily log book.' });
   }
 
@@ -1282,17 +1284,19 @@ function streamMarksheet(res, d) {
 }
 
 router.get('/download/marksheet/:enrollmentId', authenticateToken, async (req, res) => {
-  const enrollment = await loadEnrollment(req.params.enrollmentId);
+  // The gate columns ride along with the load; cert feeds `ref` below and the
+  // exam row feeds the score — all three fetches run in ONE round trip now
+  // (was four sequential ones: load → gate → cert+exam).
+  const [enrollment, cert, exam] = await Promise.all([
+    loadEnrollment(req.params.enrollmentId),
+    db.get('SELECT * FROM certificates WHERE enrollmentId = ?', req.params.enrollmentId),
+    db.get('SELECT * FROM exams WHERE enrollmentId = ? ORDER BY id DESC LIMIT 1', req.params.enrollmentId),
+  ]);
   if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPassedAccess(enrollment.id, enrollment.userId))) {
+  if (!passedGate(enrollment)) {
     return res.status(403).json({ error: 'Pass the exam to download the marksheet.' });
   }
 
-  // cert feeds `ref` (below), exam is independent — fetch them together.
-  const [cert, exam] = await Promise.all([
-    db.get('SELECT * FROM certificates WHERE enrollmentId = ?', enrollment.id),
-    db.get('SELECT * FROM exams WHERE enrollmentId = ? ORDER BY id DESC LIMIT 1', enrollment.id),
-  ]);
   const ref = cert ? cert.certificateId : await ensureEnrollmentNumber(db, enrollment, 'reportNo');
   const qrBuffer = await makeQr(ref);
 
@@ -1346,14 +1350,18 @@ router.get('/download/form/:type/:enrollmentId', authenticateToken, async (req, 
   const key = String(req.params.type || '').toLowerCase();
   if (!FORM_TYPES.includes(key)) return res.status(404).json({ error: 'Unknown form type' });
 
-  const enrollment = await loadEnrollment(req.params.enrollmentId);
+  // loadEnrollment carries the gate columns; the certificate row (ref for the
+  // QR) is keyed by the route param, so both fetches share one round trip.
+  const [enrollment, cert] = await Promise.all([
+    loadEnrollment(req.params.enrollmentId),
+    db.get('SELECT certificateId FROM certificates WHERE enrollmentId = ?', req.params.enrollmentId),
+  ]);
   if (!enrollment || !(await canAccessStudent(req, enrollment.userId))) return res.status(404).json({ error: 'Enrollment not found' });
-  if (!(await hasPassedAccess(enrollment.id, enrollment.userId))) {
+  if (!passedGate(enrollment)) {
     return res.status(403).json({ error: 'Pass the exam to download this form.' });
   }
 
   try {
-    const cert = await db.get('SELECT certificateId FROM certificates WHERE enrollmentId = ?', enrollment.id);
     const ref = cert ? cert.certificateId : await ensureEnrollmentNumber(db, enrollment, 'reportNo');
     const qrBuffer = await makeQr(ref);
     await streamForm(res, key, {
