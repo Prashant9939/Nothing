@@ -15,14 +15,14 @@ export default function VideoPlayer({ url, title }: VideoPlayerProps) {
 
   if (!youtubeId) {
     return (
-      <div className="bg-slate-100 border border-slate-200 rounded-2xl p-8 text-center">
-        <Video className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-        <p className="break-words text-slate-600 text-sm font-medium">{title}</p>
+      <div className="bg-cream border border-sand rounded-[24px] p-8 text-center">
+        <Video className="w-12 h-12 text-charcoal mx-auto mb-3" />
+        <p className="break-words text-charcoal text-sm font-medium">{title}</p>
         <a 
           href={url} 
           target="_blank" 
           rel="noopener noreferrer"
-          className="inline-block mt-3 text-sm text-slate-600 hover:text-slate-800 underline"
+          className="inline-block mt-3 text-sm font-semibold text-ink hover:text-burnt underline"
         >
           Watch Video
         </a>
@@ -31,7 +31,7 @@ export default function VideoPlayer({ url, title }: VideoPlayerProps) {
   }
 
   return (
-    <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-slate-200">
+    <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-sand">
       <iframe
         src={`https://www.youtube.com/embed/${youtubeId}`}
         title={title}

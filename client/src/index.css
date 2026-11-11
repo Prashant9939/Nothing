@@ -449,3 +449,32 @@ input, textarea, select, [contenteditable="true"] {
   -ms-user-select: text;
   user-select: text;
 }
+
+/* ── Student profile skin ───────────────────────────────────────────────
+   Scoped overrides so the shared form atoms (Input, PasswordField) match
+   the alabaster/burnt palette without touching admin or partner screens —
+   they never render an element with the .profile-skin ancestor.
+   Specificity beats the utility classes on the shared components while
+   leaving every default untouched elsewhere. */
+.profile-skin label {
+  color: var(--color-charcoal);
+}
+.profile-skin input {
+  background-color: var(--color-cream);
+  border-color: var(--color-sand);
+  color: var(--color-ink);
+}
+.profile-skin input::placeholder {
+  color: #a39c92;
+}
+.profile-skin input:focus {
+  border-color: var(--color-burnt);
+  box-shadow: 0 0 0 3px rgba(217, 84, 30, 0.18);
+}
+.profile-skin input[disabled] {
+  background-color: rgba(243, 238, 227, 0.6);
+  color: var(--color-charcoal);
+}
+.profile-skin input[type="password"] ~ button {
+  color: var(--color-charcoal);
+}

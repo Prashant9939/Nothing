@@ -1,15 +1,23 @@
 import { useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowRight, BookOpen, CalendarClock, CheckCircle2, ClipboardList,
-  Clock, Frown, Lock, PartyPopper, PlayCircle,
+  AlertTriangle, ArrowRight, Award, BookOpen, ClipboardList, Clock, Frown, Lock,
+  PlayCircle, Target, Trophy,
 } from 'lucide-react';
 import { studentApi } from '../../api';
 import type { Certificate, Enrollment, Exam } from '../../api';
-import { PageHeader, PageSkeleton, EmptyState, Button } from '../../components/ui';
+import { useAuth } from '../../context/AuthContext';
+import { PageSkeleton, EmptyState } from '../../components/ui';
+import TrackAside, { type TrackStatus } from '../../components/learning/TrackAside';
+import TrackBanner, { bannerCta } from '../../components/learning/TrackBanner';
+import TrackStat from '../../components/learning/TrackStat';
 
-const primaryLink = 'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40';
+/* Student examination hub in the mockup's layout language: the shared
+   "Your Tracks" aside on the left, and on the right a rich noir state
+   banner (pass/fail/in-progress/locked/ready) over real stat cards.
+   Red marks failures, amber marks in-progress, burnt marks achievements. */
+
+const primaryLink = 'inline-flex items-center justify-center gap-2 rounded-xl bg-burnt px-6 py-2.5 text-sm font-semibold text-cream shadow-md shadow-burnt/30 transition-all hover:-translate-y-0.5 hover:bg-burnt-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/50';
 
 const gradeFor = (score: number) =>
   score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B+' : score >= 60 ? 'B' : score >= 50 ? 'C' : 'D';
@@ -17,10 +25,20 @@ const gradeFor = (score: number) =>
 const formatDate = (value?: string | null) =>
   value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
 
+const examStatus = (exam?: Exam): TrackStatus => {
+  if (!exam) return { text: 'No Exam', tone: 'default' };
+  if (exam.status === 'completed') return { text: 'Passed', tone: 'burnt' };
+  if (exam.status === 'failed') return { text: 'Not Passed', tone: 'red' };
+  if (exam.status === 'in_progress') return { text: 'In Progress', tone: 'amber' };
+  if (exam.courseCompleted === false) return { text: 'Locked', tone: 'default' };
+  return { text: 'Ready', tone: 'burnt' };
+};
+
 export default function ExamPage() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -31,9 +49,17 @@ export default function ExamPage() {
       const active = (res.data.enrollments || []).filter(
         (e: Enrollment) => e.status === 'active' || e.status === 'completed'
       );
+      const allExams = res.data.exams || [];
       setEnrollments(active);
-      setExams(res.data.exams || []);
+      setExams(allExams);
       setCertificates(res.data.certificates || []);
+      // Default to the first track with an exam still to take; once every
+      // exam is passed, land on the first track.
+      const first = active.find((e) => {
+        const ex = allExams.find((x) => x.enrollmentId === e.id);
+        return ex && ex.status !== 'completed';
+      }) || active[0];
+      if (first) setSelectedId(first.id);
       setLoading(false);
     }).catch(() => {
       setLoadError(true);
@@ -48,26 +74,20 @@ export default function ExamPage() {
   if (loadError) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Examination" subtitle="Test your knowledge and earn your certificate" />
         <EmptyState
           tone="error"
           icon={<AlertTriangle size={22} />}
           title="Couldn't load exam details"
           description="Something went wrong while fetching your exams. Please try again."
-          action={<Button onClick={load}>Retry</Button>}
+          action={<button type="button" onClick={load} className={primaryLink}>Retry</button>}
         />
       </div>
     );
   }
 
-  const passed = exams.filter(e => e.status === 'completed');
-  const upcoming = exams.filter(e => e.status !== 'completed');
-  const examless = enrollments.filter(e => !exams.some(x => x.enrollmentId === e.id));
-
-  if (enrollments.length === 0 && exams.length === 0) {
+  if (enrollments.length === 0) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Examination" subtitle="Test your knowledge and earn your certificate" />
         <EmptyState
           icon={<ClipboardList size={22} />}
           title="No Active Enrollment"
@@ -78,223 +98,192 @@ export default function ExamPage() {
     );
   }
 
+  const selected = enrollments.find(e => e.id === selectedId) || enrollments[0];
+  const trackExams = exams.filter(x => x.enrollmentId === selected.id);
+  // A retake may leave several rows; prefer the passed attempt, then the
+  // one in progress, then whatever exists.
+  const exam = trackExams.find(x => x.status === 'completed')
+    || trackExams.find(x => x.status === 'in_progress')
+    || trackExams[0];
+  const certificate = certificates.find(c => c.enrollmentId === selected.id);
+
   return (
-    <div className="space-y-6">
-      <PageHeader title="Examination" subtitle="Test your knowledge and earn your certificate" />
+    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+      <TrackAside
+        enrollments={enrollments}
+        selectedId={selected.id}
+        onSelect={setSelectedId}
+        statusFor={(e) => examStatus(exams.find(x => x.enrollmentId === e.id))}
+      />
 
-      {passed.length > 0 && (
-        <section>
-          <SectionHeading
-            title="Passed Exams"
-            count={passed.length}
-            icon={<CheckCircle2 className="h-4 w-4" />}
-            iconClass="bg-emerald-100 text-emerald-600"
-          />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {passed.map(exam => (
-              <PassedCard
-                key={exam.id}
-                exam={exam}
-                certificate={certificates.find(c => c.enrollmentId === exam.enrollmentId)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {upcoming.length > 0 && (
-        <section>
-          <SectionHeading
-            title="Upcoming Exams"
-            count={upcoming.length}
-            icon={<CalendarClock className="h-4 w-4" />}
-            iconClass="bg-slate-100 text-slate-700"
-          />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {upcoming.map(exam => (
-              <UpcomingCard key={exam.id} exam={exam} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {examless.length > 0 && (
-        <section>
-          <SectionHeading
-            title="Exam Not Available Yet"
-            count={examless.length}
-            noun="program"
-            icon={<BookOpen className="h-4 w-4" />}
-            iconClass="bg-slate-100 text-slate-700"
-          />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {examless.map(enrollment => (
-              <div key={enrollment.id} className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 shadow-soft">
-                <h3 className="text-sm font-semibold text-slate-900">{enrollment.internshipTitle}</h3>
-                <p className="mt-2 text-sm text-slate-500">
-                  The final exam for this program hasn't been configured yet. It will appear here once available.
-                </p>
-                <Link to="/student/learning" className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900">
-                  Continue Learning <ArrowRight size={13} />
-                </Link>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {passed.length === 0 && upcoming.length === 0 && examless.length === 0 && (
-        <EmptyState
-          icon={<ClipboardList size={22} />}
-          title="No Exams Yet"
-          description="Complete your learning modules to unlock your final exams."
-          action={<Link to="/student/learning" className={primaryLink}>Go to Learning <ArrowRight size={15} /></Link>}
-        />
-      )}
+      <section className="flex flex-col gap-6 lg:col-span-8">
+        <ExamTrackView key={selected.id} enrollment={selected} exam={exam} certificate={certificate} />
+      </section>
     </div>
   );
 }
 
-function SectionHeading({ title, count, noun = 'exam', icon, iconClass }: {
-  title: string;
-  count: number;
-  noun?: string;
-  icon: ReactNode;
-  iconClass: string;
+function ExamTrackView({ enrollment, exam, certificate }: {
+  enrollment: Enrollment;
+  exam?: Exam;
+  certificate?: Certificate;
 }) {
-  return (
-    <div className="mb-4 flex items-center gap-2.5">
-      <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconClass}`}>{icon}</span>
-      <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-      <span className="text-xs text-slate-500">{count} {noun}{count === 1 ? '' : 's'}</span>
-    </div>
-  );
-}
+  const { user } = useAuth();
+  const name = user?.firstName?.trim();
 
-function PassedCard({ exam, certificate }: { exam: Exam; certificate?: Certificate }) {
+  if (!exam) {
+    return (
+      <TrackBanner
+        tone="cream"
+        icon={<BookOpen size={32} strokeWidth={2} />}
+        title="Exam not available yet"
+        description={
+          <>
+            The final exam for <strong className="text-cream">{enrollment.internshipTitle}</strong> hasn't been
+            configured yet. It will appear here once it's ready.
+          </>
+        }
+        action={
+          <Link to="/student/learning" className={bannerCta}>
+            Continue Learning <ArrowRight size={18} strokeWidth={3} />
+          </Link>
+        }
+      />
+    );
+  }
+
   const score = exam.score ?? 0;
-  const grade = certificate?.grade || gradeFor(score);
   const completedOn = formatDate(certificate?.issuedAt || exam.completedAt);
+  const scheduled = formatDate(exam.scheduledAt);
 
-  return (
-    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-soft">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-          <PartyPopper size={18} />
+  if (exam.status === 'completed') {
+    const grade = certificate?.grade || gradeFor(score);
+    return (
+      <>
+        <TrackBanner
+          tone="burnt"
+          icon={<Trophy size={32} strokeWidth={2} />}
+          title={name ? `You cleared it, ${name}!` : 'You cleared it!'}
+          description={
+            <>
+              You passed the <strong className="text-cream">{enrollment.internshipTitle}</strong> final exam
+              {completedOn ? ` on ${completedOn}` : ''} — your certificate is ready.
+            </>
+          }
+          action={
+            <Link to="/student/documents" className={bannerCta}>
+              View Certificate <ArrowRight size={18} strokeWidth={3} />
+            </Link>
+          }
+        />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <TrackStat icon={<ClipboardList size={20} strokeWidth={2.5} />} value={`${score}%`} label="Exam Score" />
+          <TrackStat icon={<Target size={20} strokeWidth={2.5} />} value={`${exam.passingMarks}%`} label="Pass Mark" />
+          <TrackStat tone="burnt" icon={<Award size={20} strokeWidth={2.5} />} value={grade} label="Grade" />
         </div>
-        <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Passed</span>
-      </div>
-      <h3 className="text-sm font-semibold text-slate-900">{exam.internshipTitle || 'Final Exam'}</h3>
-      <div className="mt-2 flex items-end gap-2">
-        <span className="text-3xl font-bold leading-none text-slate-900">{score}%</span>
-        <span className="mb-0.5 rounded-md bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-700">Grade {grade}</span>
-      </div>
-      <p className="mt-2 text-xs text-slate-500">{completedOn ? `Completed ${completedOn}` : 'Completed'}</p>
-      <Link to="/student/documents" className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800">
-        View Certificate <ArrowRight size={13} />
-      </Link>
-    </div>
-  );
-}
-
-function UpcomingCard({ exam }: { exam: Exam }) {
-  const href = `/student/exam/${exam.enrollmentId}`;
-  const title = exam.internshipTitle || 'Final Exam';
+      </>
+    );
+  }
 
   if (exam.status === 'failed') {
     return (
-      <div className="rounded-2xl border border-red-200 bg-red-50/60 p-5 shadow-soft">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100 text-red-500">
-            <Frown size={18} />
-          </div>
-          <span className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-600">Not Passed</span>
+      <>
+        <TrackBanner
+          tone="red"
+          icon={<Frown size={32} strokeWidth={2} />}
+          title="Not passed yet"
+          description={
+            <>
+              You scored <strong className="text-cream">{score}%</strong> on the{' '}
+              <strong className="text-cream">{enrollment.internshipTitle}</strong> final exam. Review the learning
+              modules and contact your administrator to request a retake.
+            </>
+          }
+          action={
+            <Link to="/student/learning" className={bannerCta}>
+              Review Modules <ArrowRight size={18} strokeWidth={3} />
+            </Link>
+          }
+        />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <TrackStat icon={<ClipboardList size={20} strokeWidth={2.5} />} value={`${score}%`} label="Exam Score" />
+          <TrackStat icon={<Target size={20} strokeWidth={2.5} />} value={`${exam.passingMarks}%`} label="Pass Mark" />
+          <TrackStat icon={<Award size={20} strokeWidth={2.5} />} value="—" label="Grade" />
         </div>
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        <p className="mt-2 text-sm text-slate-600">
-          Score <span className="font-semibold text-slate-900">{exam.score ?? 0}%</span>
-          <span className="mx-1.5 text-slate-400">|</span>
-          Required {exam.passingMarks}%
-        </p>
-        <p className="mt-3 text-xs text-slate-500">Review the learning modules and contact your administrator to request a retake.</p>
-      </div>
+      </>
     );
   }
 
   if (exam.status === 'in_progress') {
     return (
-      <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-soft">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
-            <Clock size={18} />
-          </div>
-          <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">In Progress</span>
-        </div>
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        <p className="mt-2 text-sm text-slate-600">You've started this exam. Jump back in to finish it.</p>
-        <Link to={href} className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40">
-          Resume Exam <ArrowRight size={14} />
-        </Link>
-      </div>
+      <TrackBanner
+        tone="amber"
+        icon={<Clock size={32} strokeWidth={2} />}
+        title="Exam in progress"
+        description={
+          <>
+            You've started the <strong className="text-cream">{enrollment.internshipTitle}</strong> final exam —
+            jump back in to finish it. {exam.duration} min · Pass {exam.passingMarks}%
+          </>
+        }
+        action={
+          <Link to={`/student/exam/${exam.enrollmentId}`} className={bannerCta}>
+            Resume Exam <ArrowRight size={18} strokeWidth={3} />
+          </Link>
+        }
+      />
     );
   }
 
   if (exam.courseCompleted === false) {
-    const progress = exam.courseProgress || 0;
+    const courseProgress = exam.courseProgress || 0;
     const modulesPublished = (exam.moduleCount ?? 0) > 0;
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-            <Lock size={18} />
-          </div>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Locked</span>
-        </div>
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        <p className="mt-2 text-sm text-slate-600">
-          {modulesPublished
-            ? 'Complete all learning modules to unlock the final exam.'
-            : 'Learning modules for this track have not been published yet. Please check back soon.'}
-        </p>
-        {modulesPublished && (
-          <div className="mt-4">
-            <div className="mb-1.5 flex items-center justify-between text-xs text-slate-500">
-              <span>Course Progress</span>
-              <span className="font-semibold text-slate-900">{progress}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-500" style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-        )}
-        <Link to="/student/learning" className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900">
-          Continue Learning <ArrowRight size={13} />
-        </Link>
-      </div>
+      <TrackBanner
+        tone="cream"
+        icon={<Lock size={32} strokeWidth={2} />}
+        title={name ? `Almost there, ${name}!` : 'Almost there!'}
+        description={
+          modulesPublished ? (
+            <>
+              Complete all learning modules to unlock the{' '}
+              <strong className="text-cream">{enrollment.internshipTitle}</strong> final exam — you're{' '}
+              {courseProgress}% through the course.
+            </>
+          ) : (
+            <>
+              Learning modules for <strong className="text-cream">{enrollment.internshipTitle}</strong> have not
+              been published yet. Please check back soon.
+            </>
+          )
+        }
+        progress={modulesPublished ? { pct: courseProgress, label: `${courseProgress}% Course Progress` } : undefined}
+        action={
+          <Link to="/student/learning" className={bannerCta}>
+            Continue Learning <ArrowRight size={18} strokeWidth={3} />
+          </Link>
+        }
+      />
     );
   }
 
-  const scheduled = formatDate(exam.scheduledAt);
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-          <PlayCircle size={18} />
-        </div>
-        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-          {scheduled ? 'Scheduled' : 'Ready'}
-        </span>
-      </div>
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-      {scheduled && <p className="mt-1 text-xs text-slate-500">Scheduled for {scheduled}</p>}
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-        <span>{exam.totalQuestions} questions</span>
-        <span>{exam.duration} min</span>
-        <span>Pass {exam.passingMarks}%</span>
-      </div>
-      <Link to={href} className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40">
-        Start Exam <ArrowRight size={14} />
-      </Link>
-    </div>
+    <TrackBanner
+      tone="burnt"
+      icon={<PlayCircle size={32} strokeWidth={2} />}
+      title={name ? `Ready when you are, ${name}!` : 'Your exam is ready'}
+      description={
+        <>
+          {scheduled ? `Scheduled for ${scheduled}. ` : ''}
+          The <strong className="text-cream">{enrollment.internshipTitle}</strong> final exam is waiting:{' '}
+          {exam.totalQuestions} questions · {exam.duration} min · pass {exam.passingMarks}%
+        </>
+      }
+      action={
+        <Link to={`/student/exam/${exam.enrollmentId}`} className={bannerCta}>
+          Start Exam <ArrowRight size={18} strokeWidth={3} />
+        </Link>
+      }
+    />
   );
 }

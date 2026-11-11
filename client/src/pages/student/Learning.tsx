@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, ArrowRight, Award, BookOpen, Check, CheckCircle, Clock, FileText, PartyPopper, Rocket } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Award, BookOpen, CheckCircle, Clock, FileText, Rocket, Trophy } from 'lucide-react';
 import { studentApi } from '../../api';
 import type { Enrollment, Exam, LearningModule, Payment } from '../../api';
+import { useAuth } from '../../context/AuthContext';
 import { usePopup } from '../../context/PopupContext';
-import { PageHeader, PageLoader, PageSkeleton, EmptyState, Button } from '../../components/ui';
-import CircularProgress from '../../components/learning/CircularProgress';
+import { PageLoader, PageSkeleton, EmptyState } from '../../components/ui';
+import TrackAside from '../../components/learning/TrackAside';
+import TrackBanner, { bannerCta } from '../../components/learning/TrackBanner';
+import TrackStat from '../../components/learning/TrackStat';
 import ModuleCard from '../../components/learning/ModuleCard';
 import InteractiveQuiz from '../../components/learning/InteractiveQuiz';
 import VideoPlayer from '../../components/learning/VideoPlayer';
@@ -21,7 +24,9 @@ interface LearningProgressData {
   completedModules: number[];
 }
 
-const primaryLink = 'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40';
+const primaryLink = 'inline-flex items-center justify-center gap-2 rounded-xl bg-burnt px-6 py-2.5 text-sm font-semibold text-cream shadow-md shadow-burnt/30 transition-all hover:-translate-y-0.5 hover:bg-burnt-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/50';
+const btnPrimary = 'inline-flex items-center justify-center gap-2 rounded-xl bg-burnt px-5 py-2.5 text-sm font-semibold text-cream shadow-md shadow-burnt/30 transition-all hover:bg-burnt-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/50 disabled:pointer-events-none disabled:opacity-60';
+const spinner = <span className="h-4 w-4 animate-spin rounded-full border-2 border-cream/40 border-t-cream" aria-hidden="true" />;
 
 export default function Learning() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
@@ -55,18 +60,17 @@ export default function Learning() {
 
   useEffect(() => { load(); }, []);
 
-  if (loading) return <PageSkeleton label="Loading your modules..." />;
+  if (loading) return <PageSkeleton label="Loading your tracks..." />;
 
   if (loadError) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Learning Modules" subtitle="Track your progress and complete modules" />
         <EmptyState
           tone="error"
           icon={<AlertTriangle size={22} />}
           title="Couldn't load your programs"
           description="Something went wrong while fetching your enrollments. Check your connection and try again."
-          action={<Button onClick={load}>Retry</Button>}
+          action={<button type="button" onClick={load} className={btnPrimary}>Retry</button>}
         />
       </div>
     );
@@ -75,7 +79,6 @@ export default function Learning() {
   if (enrollments.length === 0) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Learning Modules" subtitle="Track your progress and complete modules" />
         <EmptyState
           icon={<Rocket size={22} />}
           title="No Active Programs"
@@ -86,57 +89,34 @@ export default function Learning() {
     );
   }
 
-  const selected = enrollments.find(e => e.id === selectedId);
+  const selected = enrollments.find(e => e.id === selectedId) || enrollments[0];
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Learning Modules" subtitle="Track your progress and complete modules" />
+    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+      <TrackAside
+        enrollments={enrollments}
+        selectedId={selected.id}
+        onSelect={setSelectedId}
+        statusFor={(e) => ({
+          text: e.progress >= 100 ? 'Completed' : e.progress > 0 ? `In Progress · ${e.progress}%` : 'Not Started',
+          tone: 'default',
+        })}
+      />
 
-      {enrollments.length > 1 && (
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Select Track</h2>
-          <div className="flex flex-wrap gap-2">
-            {enrollments.map(e => {
-              const isComplete = e.progress >= 100;
-              const isSelected = e.id === selectedId;
-              return (
-                <button
-                  key={e.id}
-                  onClick={() => setSelectedId(e.id)}
-                  aria-pressed={isSelected}
-                  className={`inline-flex items-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
-                    isSelected ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : isComplete ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
-                  }`}
-                >
-                  {isComplete && <Check size={13} />}
-                  {e.internshipTitle}
-                  {!isComplete && e.progress > 0 && <span className="text-xs opacity-60">({e.progress}%)</span>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {enrollments.length === 1 && (
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
-          <p className="break-words text-sm text-slate-500">Track: <span className="font-semibold text-slate-900">{enrollments[0].internshipTitle}</span></p>
-        </div>
-      )}
-
-      {selected && (
+      <section className="flex flex-col gap-6 lg:col-span-8">
         <LearningSection
           key={selected.id}
           enrollment={selected}
           exam={exams.find(ex => ex.enrollmentId === selected.id)}
         />
-      )}
+      </section>
     </div>
   );
 }
 
 function LearningSection({ enrollment, exam }: { enrollment: Enrollment; exam?: Exam }) {
   const popup = usePopup();
+  const { user } = useAuth();
   const [modules, setModules] = useState<LearningMod[]>([]);
   const [progress, setProgress] = useState<LearningProgressData | null>(null);
   const [selectedModule, setSelectedModule] = useState<LearningMod | null>(null);
@@ -183,7 +163,7 @@ function LearningSection({ enrollment, exam }: { enrollment: Enrollment; exam?: 
         icon={<AlertTriangle size={22} />}
         title="Couldn't load learning content"
         description="Something went wrong while fetching modules and progress. Please try again."
-        action={<Button onClick={load}>Retry</Button>}
+        action={<button type="button" onClick={load} className={btnPrimary}>Retry</button>}
       />
     );
   }
@@ -199,31 +179,6 @@ function LearningSection({ enrollment, exam }: { enrollment: Enrollment; exam?: 
     );
   }
 
-  const completedModules = progress?.completedModules || [];
-  // "Track Completed" only when the track actually has modules and all of them
-  // are done — an empty curriculum must never render as completed.
-  const isComplete = (progress?.totalModules ?? 0) > 0 && (progress?.percentage || 0) >= 100;
-
-  if (isComplete) {
-    return (
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-8 text-center">
-        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-          <PartyPopper size={24} />
-        </div>
-        <h3 className="mb-1 text-lg font-bold text-emerald-800">Track Completed!</h3>
-        <p className="text-sm text-emerald-600">{enrollment.internshipTitle} - All modules completed</p>
-        {exam && (
-          <Link
-            to="/student/exam-page"
-            className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
-          >
-            {exam.status === 'completed' ? 'View Exam Result' : 'Take the Final Exam'} <ArrowRight size={14} />
-          </Link>
-        )}
-      </div>
-    );
-  }
-
   if (modules.length === 0) {
     return (
       <EmptyState
@@ -234,49 +189,117 @@ function LearningSection({ enrollment, exam }: { enrollment: Enrollment; exam?: 
     );
   }
 
+  const completedModules = progress?.completedModules || [];
+  const totalModules = progress?.totalModules ?? modules.length;
+  const completedCount = progress?.completedCount || 0;
+  const pct = progress?.percentage || 0;
+  // "Completed" only when the track actually has modules and all of them
+  // are done — an empty curriculum must never render as completed.
+  const isComplete = (progress?.totalModules ?? 0) > 0 && pct >= 100;
+  const totalMinutes = modules.reduce((acc, m) => acc + (m.durationMinutes || 0), 0);
+  const hoursValue = totalMinutes >= 60 ? Math.round(totalMinutes / 60) : totalMinutes;
+  const hoursUnit = totalMinutes >= 60 ? 'h' : 'm';
+  const name = user?.firstName?.trim();
+
+  const continueToFirstModule = () => {
+    const next = modules.find((_, i) => !completedModules.includes(i) && (i === 0 || completedModules.includes(i - 1)));
+    if (next) setSelectedModule(next);
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Progress Overview */}
-      <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-soft">
-        <div className="flex flex-col items-center gap-5 sm:flex-row sm:gap-6">
-          <CircularProgress value={progress?.percentage || 0} size={80} strokeWidth={8} className="shrink-0" />
-          <div className="w-full min-w-0 flex-1">
-            <h3 className="break-words font-semibold text-slate-900">{enrollment.internshipTitle}</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              {progress?.completedCount || 0} of {progress?.totalModules || modules.length} modules completed
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <Clock className="h-3.5 w-3.5 shrink-0" />
-                {modules.reduce((acc, m) => acc + m.durationMinutes, 0)} min total
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <BookOpen className="h-3.5 w-3.5 shrink-0" />
-                {modules.length} modules
-              </div>
+    <>
+      {isComplete ? (
+        <TrackBanner
+          tone="burnt"
+          icon={<Trophy size={32} strokeWidth={2} />}
+          title={name ? `You did it, ${name}!` : 'You did it!'}
+          description={
+            <>
+              You have successfully completed all modules for the{' '}
+              <strong className="text-cream">{enrollment.internshipTitle}</strong> track.
+            </>
+          }
+          action={
+            <Link to="/student/exam-page" className={bannerCta}>
+              {exam?.status === 'completed' ? 'View Exam Result' : exam ? 'Take the Final Exam' : 'Go to Exam Hub'}
+              <ArrowRight size={18} strokeWidth={3} />
+            </Link>
+          }
+        />
+      ) : (
+        <TrackBanner
+          tone="burnt"
+          icon={<Rocket size={32} strokeWidth={2} />}
+          title={name ? `Keep going, ${name}!` : 'Keep going!'}
+          description={
+            <>
+              You've completed <strong className="text-cream">{completedCount} of {totalModules}</strong> modules for
+              the <strong className="text-cream">{enrollment.internshipTitle}</strong> track.
+            </>
+          }
+          progress={{ pct, label: `${pct}% Complete` }}
+          action={
+            <button type="button" onClick={continueToFirstModule} className={bannerCta}>
+              Continue Learning <ArrowRight size={18} strokeWidth={3} />
+            </button>
+          }
+        />
+      )}
+
+      {/* Track stats (mockup grid) — real numbers only */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <TrackStat
+          icon={<Award size={20} strokeWidth={2.5} />}
+          value={`${pct}%`}
+          label="Completion"
+        />
+        <TrackStat
+          icon={<BookOpen size={20} strokeWidth={2.5} />}
+          value={<>{completedCount}<span className="text-xl text-noir/40">/{totalModules}</span></>}
+          label="Modules Passed"
+        />
+        <TrackStat
+          tone="burnt"
+          icon={<Clock size={20} strokeWidth={2.5} />}
+          value={<>{hoursValue}<span className="text-xl opacity-60">{hoursUnit}</span></>}
+          label={totalMinutes >= 60 ? 'Course Hours' : 'Content Minutes'}
+        />
+      </div>
+
+      {/* Module list — only while the track is still in progress */}
+      {!isComplete && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="h-7 w-2.5 shrink-0 rounded-full bg-burnt" aria-hidden="true" />
+              <h3 className="font-display text-lg font-bold uppercase leading-tight tracking-tight text-ink sm:text-xl">Course Modules</h3>
             </div>
+            <span className="shrink-0 rounded-xl border border-sand bg-alabaster px-3.5 py-1.5 text-center shadow-bento">
+              <span className="block font-display text-base font-bold leading-none text-ink">{modules.length}</span>
+              <span className="mt-0.5 block font-mono text-[10px] font-semibold uppercase leading-none text-charcoal">
+                {modules.length === 1 ? 'Module' : 'Modules'}
+              </span>
+            </span>
           </div>
-        </div>
-      </div>
+          <div className="space-y-3">
+            {modules.map((module, index) => {
+              const isCompleted = completedModules.includes(index);
+              const isLocked = index > 0 && !completedModules.includes(index - 1);
 
-      {/* Module List */}
-      <div className="space-y-3">
-        {modules.map((module, index) => {
-          const isCompleted = completedModules.includes(index);
-          const isLocked = index > 0 && !completedModules.includes(index - 1);
-
-          return (
-            <ModuleCard
-              key={module.id}
-              module={module}
-              isCompleted={isCompleted}
-              isLocked={isLocked}
-              onClick={() => setSelectedModule(module)}
-            />
-          );
-        })}
-      </div>
-    </div>
+              return (
+                <ModuleCard
+                  key={module.id}
+                  module={module}
+                  isCompleted={isCompleted}
+                  isLocked={isLocked}
+                  onClick={() => setSelectedModule(module)}
+                />
+              );
+            })}
+          </div>
+        </section>
+      )}
+    </>
   );
 }
 
@@ -328,21 +351,27 @@ function ModuleContentView({
         <button
           onClick={onBack}
           aria-label="Back to module list"
-          className="shrink-0 rounded-lg bg-slate-100 p-2 text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+          className="shrink-0 rounded-xl border border-sand bg-cream p-2 text-charcoal transition-colors hover:border-sand-dark hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-xl font-bold text-slate-900">{module.title}</h2>
-          <p className="mt-1 break-words text-sm text-slate-500">{module.description}</p>
+          <h2 className="truncate font-display text-xl font-bold text-ink">{module.title}</h2>
+          <p className="mt-1 break-words text-sm text-charcoal">{module.description}</p>
         </div>
         {!isCompleted && (
-          <Button variant="accent" loading={saving} onClick={handleMarkComplete} className="shrink-0">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleMarkComplete}
+            className={`${btnPrimary} shrink-0`}
+          >
+            {saving ? spinner : <CheckCircle className="h-4 w-4" />}
             {saving ? 'Saving...' : 'Mark Complete'}
-          </Button>
+          </button>
         )}
         {isCompleted && (
-          <div className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700">
+          <div className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-burnt/25 bg-burnt-tint px-4 py-2 text-sm font-semibold text-burnt">
             <CheckCircle className="h-4 w-4" />
             Completed
           </div>
@@ -354,16 +383,17 @@ function ModuleContentView({
         <VideoPlayer url={module.videoUrl} title={module.title} />
       )}
 
-      {/* Tabs - sticky below the topbar */}
-      <div className="sticky top-16 z-20 -mx-4 flex gap-2 overflow-x-auto overscroll-x-contain border-b border-slate-200 bg-white/95 px-4 pb-2 pt-2 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Module sections">
+      {/* Tabs - sticky below the topbar; bleeds to the viewport edge except at
+          lg where the right column sits beside the track aside. */}
+      <div className="sticky top-16 z-20 -mx-4 flex gap-2 overflow-x-auto overscroll-x-contain border-b border-sand bg-alabaster/95 px-4 pb-2 pt-2 backdrop-blur sm:-mx-6 sm:px-6 lg:ml-0 lg:-mr-8 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Module sections">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             role="tab"
             aria-selected={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
-              activeTab === tab.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+            className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40 ${
+              activeTab === tab.id ? 'bg-noir text-cream shadow-bento' : 'text-charcoal hover:bg-cream hover:text-ink'
             }`}
           >
             {tab.icon}
@@ -377,12 +407,12 @@ function ModuleContentView({
         <div className="space-y-6">
           {/* Learning Objectives */}
           {module.learningObjectives && module.learningObjectives.length > 0 && (
-            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-5">
-              <h3 className="mb-3 text-sm font-semibold text-sky-800">Learning Objectives</h3>
+            <div className="rounded-[24px] border border-burnt/20 bg-burnt-tint p-5">
+              <h3 className="mb-3 font-display text-sm font-bold text-burnt">Learning Objectives</h3>
               <ul className="space-y-2">
                 {module.learningObjectives.map((objective: string, index: number) => (
-                  <li key={index} className="flex items-start gap-2 text-sm text-sky-700">
-                    <CheckCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <li key={index} className="flex items-start gap-2 text-sm text-ink">
+                    <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-burnt" />
                     {objective}
                   </li>
                 ))}
@@ -393,9 +423,9 @@ function ModuleContentView({
           {/* Reading Material */}
           <div>
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <BookOpen className="h-4 w-4 shrink-0 text-slate-700" />
-              <h3 className="text-sm font-semibold text-slate-900">Reading Material</h3>
-          <span className="text-xs text-slate-500">
+              <BookOpen className="h-4 w-4 shrink-0 text-burnt" />
+              <h3 className="font-display text-sm font-bold text-ink">Reading Material</h3>
+          <span className="font-mono text-xs text-charcoal">
             {module.contentSections?.length || 0} section{(module.contentSections?.length || 0) === 1 ? '' : 's'} for this topic
           </span>
             </div>
@@ -403,16 +433,16 @@ function ModuleContentView({
             {module.contentSections && module.contentSections.length > 0 ? (
               <div className="space-y-4">
                 {module.contentSections.map((section, index) => (
-                  <div key={section.id} className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-soft">
+                  <div key={section.id} className="rounded-[24px] border border-sand bg-alabaster p-5 shadow-bento">
                     <div className="mb-3 flex items-start gap-3">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-[11px] font-bold text-slate-700">
-                        {index + 1}
+                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border font-mono text-[11px] font-bold ${index % 2 === 0 ? 'border-burnt/20 bg-burnt-tint text-burnt' : 'border-sand bg-cream text-ink'}`}>
+                        {String(index + 1).padStart(2, '0')}
                       </span>
-                      <h4 className="min-w-0 break-words text-base font-semibold text-slate-900">{section.title}</h4>
+                      <h4 className="min-w-0 break-words font-display text-base font-bold text-ink">{section.title}</h4>
                     </div>
-                    <p className="whitespace-pre-line break-words pl-9 text-sm leading-relaxed text-slate-600">{section.content}</p>
+                    <p className="whitespace-pre-line break-words pl-10 text-sm leading-relaxed text-charcoal">{section.content}</p>
                     {section.codeExample && (
-                      <div className="mt-4 pl-9">
+                      <div className="mt-4 pl-10">
                         <CodeBlock code={section.codeExample} language={section.language || 'javascript'} />
                       </div>
                     )}
@@ -420,8 +450,8 @@ function ModuleContentView({
                 ))}
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
-                <p className="text-sm text-slate-500">Reading material for this module is being prepared. Watch the video above and try the quiz meanwhile.</p>
+              <div className="rounded-[24px] border border-dashed border-sand-dark bg-cream/60 p-6 text-center">
+                <p className="text-sm text-charcoal">Reading material for this module is being prepared. Watch the video above and try the quiz meanwhile.</p>
               </div>
             )}
           </div>

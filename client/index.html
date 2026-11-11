@@ -9,26 +9,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Variable-range request = one font file instead of five; loaded async
-         (media swap) so the font stylesheet never blocks first paint. -->
+    <!-- Variable-range request = one font file instead of five. Loaded as a
+         normal stylesheet: the old media="print" onload swap was blocked by
+         our CSP (script-src has no unsafe-inline), which silently left every
+         page on fallback system fonts. display=swap keeps first paint on the
+         fallback until the webfont lands. -->
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap"
       rel="stylesheet"
-      media="print"
-      onload="this.media='all'"
     />
     <!-- Editorial bento type system (student portal): Space Grotesk display,
-         Plus Jakarta Sans body, JetBrains Mono data labels. Same async pattern. -->
+         Plus Jakarta Sans body, JetBrains Mono data labels. -->
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&display=swap"
       rel="stylesheet"
-      media="print"
-      onload="this.media='all'"
     />
-    <noscript>
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet" />
-      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" />
-    </noscript>
     <title>IQIntern - Internship Evaluation Platform</title>
     <meta name="description" content="Professional Training & Evaluation Hub. Acquire verified skills and accelerate your career." />
     <!-- Navbar logo is the LCP candidate: without a preload it only starts

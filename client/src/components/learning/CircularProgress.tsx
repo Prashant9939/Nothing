@@ -16,8 +16,9 @@ export default function CircularProgress({
   const offset = circumference - (value / 100) * circumference;
 
   const getColor = (percent: number) => {
-    if (percent >= 100) return '#10b981';
-    if (percent >= 70) return '#6366f1';
+    // Burnt-family progress scale: red when critically low, amber when
+    // mid, burnt once healthy — never green (student palette).
+    if (percent >= 70) return '#d9541e';
     if (percent >= 40) return '#f59e0b';
     return '#ef4444';
   };
@@ -30,7 +31,7 @@ export default function CircularProgress({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="#e5e7eb"
+          stroke="#e6dfd1"
           strokeWidth={strokeWidth}
         />
         <circle
@@ -46,7 +47,7 @@ export default function CircularProgress({
           className="transition-all duration-500"
         />
       </svg>
-      <span className="absolute text-sm font-bold text-slate-700">
+      <span className="absolute text-sm font-bold text-ink">
         {value}%
       </span>
     </div>

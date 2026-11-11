@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle, Clock, Lock, Play } from 'lucide-react';
+import { BookOpen, CheckCircle, Clock, Lock } from 'lucide-react';
 import type { LearningModule } from '../../api';
 
 interface ModuleCardProps {
@@ -8,85 +8,91 @@ interface ModuleCardProps {
   onClick: () => void;
 }
 
+/* Learning module card in the documents-page design language: alabaster
+   bento, alternating icon wells (order number / check / lock), display
+   title with difficulty chip, hairline footer with #NN · duration and an
+   Open/Review action. Locked cards use the dashed inert treatment. */
+
 export default function ModuleCard({ module, isCompleted, isLocked, onClick }: ModuleCardProps) {
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'beginner': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-      case 'intermediate': return 'bg-amber-100 text-amber-700 border-amber-200';
-      case 'advanced': return 'bg-red-100 text-red-700 border-red-200';
-      default: return 'bg-slate-100 text-slate-700 border-slate-200';
-    }
-  };
+  const difficultyChip =
+    module.difficulty === 'beginner' ? 'border-burnt/20 bg-burnt-tint text-burnt'
+    : module.difficulty === 'intermediate' ? 'border-amber-200 bg-amber-50 text-amber-700'
+    : module.difficulty === 'advanced' ? 'border-noir bg-noir text-cream'
+    : 'border-sand bg-cream text-charcoal';
+
+  if (isLocked) {
+    return (
+      <div
+        role="button"
+        aria-disabled="true"
+        className="flex cursor-not-allowed items-center gap-4 rounded-[24px] border border-dashed border-sand-dark bg-cream/60 p-4 opacity-90"
+      >
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sand bg-sand/60 text-charcoal">
+          <Lock size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="min-w-0 break-words font-display text-base font-bold text-charcoal">{module.title}</p>
+            <span className="shrink-0 rounded-full border border-sand bg-cream px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-charcoal">
+              Locked
+            </span>
+          </div>
+          <p className="mt-1 font-mono text-[11px] text-charcoal">
+            Complete the previous module to unlock
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const well = isCompleted
+    ? 'border-burnt/20 bg-burnt-tint text-burnt'
+    : module.moduleOrder % 2 === 1
+      ? 'border-burnt/20 bg-burnt-tint text-burnt'
+      : 'border-sand bg-cream text-ink';
 
   return (
     <div
-      onClick={!isLocked ? onClick : undefined}
-      role={!isLocked ? 'button' : undefined}
-      tabIndex={!isLocked ? 0 : undefined}
-      aria-disabled={isLocked || undefined}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
       onKeyDown={(e) => {
-        if (isLocked) return;
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
       }}
-      className={`group rounded-2xl border bg-white p-5 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
-        isLocked
-          ? 'cursor-not-allowed border-slate-200 opacity-60'
-          : isCompleted
-            ? 'border-emerald-200 bg-emerald-50/30 hover:border-emerald-300'
-            : 'cursor-pointer border-slate-200 shadow-soft hover:border-slate-300 hover:shadow-lift'
-      }`}
+      className="bento-card group cursor-pointer rounded-[24px] border border-sand bg-alabaster p-4 shadow-bento transition-all hover:border-sand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <div className={`flex h-12 w-12 items-center justify-center rounded-xl text-sm font-bold ${
-            isCompleted
-              ? 'border border-emerald-200 bg-emerald-100 text-emerald-700'
-              : isLocked
-                ? 'border border-slate-200 bg-slate-100 text-slate-500'
-                : 'border border-slate-200 bg-slate-100 text-slate-700'
-          }`}>
-            {isCompleted ? <CheckCircle className="h-6 w-6" /> : isLocked ? <Lock className="h-5 w-5" /> : module.moduleOrder}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <h4 className={`min-w-0 break-words text-sm font-semibold ${isCompleted ? 'text-emerald-800' : 'text-slate-900'}`}>
-                {module.title}
-              </h4>
-              {isCompleted && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                  <CheckCircle className="h-3 w-3" />
-                  Completed
-                </span>
-              )}
-              {!isCompleted && !isLocked && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                  Pending
-                </span>
-              )}
-            </div>
-            <p className="mt-1 line-clamp-2 text-xs text-slate-500">{module.description}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <span className={`rounded border px-2 py-0.5 text-[10px] font-medium ${getDifficultyColor(module.difficulty)}`}>
-                {module.difficulty}
+      <div className="flex items-start gap-3">
+        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border font-mono text-sm font-bold ${well}`}>
+          {isCompleted
+            ? <CheckCircle size={20} />
+            : <span aria-hidden="true">{String(module.moduleOrder).padStart(2, '0')}</span>}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="break-words font-display text-base font-bold text-ink sm:text-lg">{module.title}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <span className={`rounded border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide ${difficultyChip}`}>
+              {module.difficulty}
+            </span>
+            <span className="flex items-center gap-1 font-mono text-[11px] text-charcoal">
+              <Clock size={12} aria-hidden="true" />
+              {module.durationMinutes} min
+            </span>
+            {module.contentSections && module.contentSections.length > 0 && (
+              <span className="flex items-center gap-1 font-mono text-[11px] text-charcoal">
+                <BookOpen size={12} aria-hidden="true" />
+                {module.contentSections.length} sections
               </span>
-              <span className="flex items-center gap-1 text-[10px] text-slate-500">
-                <Clock className="h-3 w-3" />
-                {module.durationMinutes} min
-              </span>
-              {module.contentSections && module.contentSections.length > 0 && (
-                <span className="flex items-center gap-1 text-[10px] text-slate-500">
-                  <BookOpen className="h-3 w-3" />
-                  {module.contentSections.length} reading sections
-                </span>
-              )}
-            </div>
+            )}
           </div>
         </div>
-        {!isLocked && !isCompleted && (
-          <span aria-hidden="true" className="shrink-0 self-start rounded-lg bg-slate-100 p-2 text-slate-600 transition-colors group-hover:bg-slate-200">
-            <Play className="h-4 w-4" />
-          </span>
-        )}
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-sand pt-2.5">
+        <span className="min-w-0 truncate font-mono text-xs text-charcoal">
+          #{String(module.moduleOrder).padStart(2, '0')} · {module.durationMinutes} min
+        </span>
+        {isCompleted
+          ? <span className="shrink-0 text-xs font-semibold text-ink transition-colors group-hover:text-burnt">Review →</span>
+          : <span className="shrink-0 text-xs font-semibold text-ink transition-colors group-hover:text-burnt">Open →</span>}
       </div>
     </div>
   );
