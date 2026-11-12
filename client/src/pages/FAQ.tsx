@@ -1,15 +1,17 @@
+import { Link } from 'react-router-dom';
+
 export default function FAQ() {
   const faqs = [
-    { q: 'How do I enroll in a program?', a: 'Create an account, browse our programs, and click "Enroll Now" on your preferred track. Complete registration and payment in under 2 minutes.' },
+    { q: 'How do I enroll in a program?', a: <>Create an account, <Link to="/programs" className="text-orange-600 font-medium hover:underline">browse our programs</Link>, and click "Enroll Now" on your preferred track. Complete registration and payment in under 2 minutes.</> },
     { q: 'What payment methods do you accept?', a: 'We accept UPI, credit/debit cards, net banking, and wallets through our secure RazorPay payment gateway.' },
-    { q: 'How long does the internship last?', a: 'Programs range from 28 to 42 days depending on the track. Each program has a structured curriculum with daily modules.' },
+    { q: 'How long does the internship last?', a: <>Programs range from 28 to 42 days depending on the track. Each <Link to="/programs" className="text-orange-600 font-medium hover:underline">program</Link> has a structured curriculum with daily modules.</> },
     { q: 'How is the exam conducted?', a: 'Exams are conducted online with timed assessments. You can take the exam from anywhere. The exam includes multiple-choice questions based on your program topics.' },
     { q: 'What is the passing score?', a: 'You need to score 40% or higher to pass the exam and receive your certificate.' },
-    { q: 'Can I retake the exam?', a: 'Yes, you can retake the exam if you don\'t pass on your first attempt. Contact support for retake scheduling.' },
-    { q: 'How do I verify a certificate?', a: 'Use our public certificate verification page. Enter the certificate ID to view all details including name, program, grade, and score.' },
-    { q: 'Can I get a refund?', a: 'Yes, we offer refunds within 7 days of enrollment if you haven\'t started the program. Contact our support team for assistance.' },
-    { q: 'Are the internships recognized?', a: 'Our certificates are issued by IQIntern and can be verified through our platform. They demonstrate your skills and completion of the program.' },
-    { q: 'How do I contact support?', a: 'You can reach us through the Contact page, email at support@iqintern.in, or WhatsApp during business hours (Mon-Sat, 9AM-8PM IST).' },
+    { q: 'Can I retake the exam?', a: <>Yes, you can retake the exam if you don't pass on your first attempt. <Link to="/contact" className="text-orange-600 font-medium hover:underline">Contact support</Link> for retake scheduling.</> },
+    { q: 'How do I verify a certificate?', a: <>Use our <Link to="/certification" className="text-orange-600 font-medium hover:underline">public certificate verification page</Link>. Enter the certificate ID to view all details including name, program, grade, and score.</> },
+    { q: 'Can I get a refund?', a: <>Yes, we offer refunds within 7 days of enrollment if you haven't started the program. <Link to="/contact" className="text-orange-600 font-medium hover:underline">Contact our support team</Link> for assistance.</> },
+    { q: 'Are the internships recognized?', a: <>Our certificates are issued by IQIntern and can be verified through our platform. They demonstrate your skills and completion of the program. <Link to="/about" className="text-orange-600 font-medium hover:underline">Learn more about IQIntern</Link>.</> },
+    { q: 'How do I contact support?', a: <>You can reach us through the <Link to="/contact" className="text-orange-600 font-medium hover:underline">Contact page</Link>, email at support@iqintern.in, or WhatsApp during business hours (Mon-Sat, 9AM-8PM IST).</> },
   ];
 
   return (
@@ -28,6 +30,16 @@ export default function FAQ() {
               <div className="px-4 pb-4 text-sm text-gray-600">{faq.a}</div>
             </details>
           ))}
+        </div>
+
+        {/* Still stuck? Route visitors to the pages that answer the rest. */}
+        <div className="mt-8 bg-white border border-gray-200 rounded-lg p-6 text-center reveal reveal-pop">
+          <p className="text-sm text-gray-600 mb-4">Didn't find your answer? Our team replies within 24 hours.</p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link to="/contact" className="px-5 py-2.5 bg-orange-500 text-white text-sm font-semibold rounded-lg hover:bg-orange-600 transition-colors">Contact Us</Link>
+            <Link to="/programs" className="px-5 py-2.5 border border-gray-300 text-sm font-semibold rounded-lg hover:bg-gray-50 transition-colors">Browse Programs</Link>
+            <Link to="/certification" className="px-5 py-2.5 border border-gray-300 text-sm font-semibold rounded-lg hover:bg-gray-50 transition-colors">Verify a Certificate</Link>
+          </div>
         </div>
       </div>
     </div>

@@ -538,6 +538,13 @@ export default function DocumentsList() {
                 <Download size={15} />
                 Download Certificate
               </button>
+              <Link
+                to="/certification"
+                className="inline-flex items-center gap-2 rounded-xl border border-cream/30 px-5 py-2.5 text-sm font-semibold text-cream transition-colors hover:bg-cream/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-cream/50"
+              >
+                <BadgeCheck size={15} />
+                Verify Publicly
+              </Link>
             </div>
           </div>
         </section>

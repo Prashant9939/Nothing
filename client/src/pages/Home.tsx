@@ -110,7 +110,7 @@ export default function Home() {
             Ditch basic attendance certificates. Enroll in industry-aligned professional training paths, validate your domain skills through timed assessments, and build verifiable credentials.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-            <Link to="/register" className="px-8 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors">
+            <Link to="/programs" className="px-8 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors">
               Explore Programs
             </Link>
             <Link to="/contact" className="px-8 py-3 border border-gray-600 text-white font-semibold rounded-lg hover:border-white transition-colors">
@@ -164,7 +164,7 @@ export default function Home() {
           </div>
           <div className="flex gap-4 justify-center">
             <Link to="/register" className="px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors">Register Now</Link>
-            <Link to="/register" className="px-6 py-3 border border-gray-300 font-semibold rounded-lg hover:bg-gray-50 transition-colors">View Membership Plans</Link>
+            <Link to="/programs" className="px-6 py-3 border border-gray-300 font-semibold rounded-lg hover:bg-gray-50 transition-colors">View Membership Plans</Link>
           </div>
         </div>
       </section>
@@ -206,7 +206,7 @@ export default function Home() {
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12 reveal reveal-pop">
             <h2 className="text-3xl font-bold mb-4">Why Professional Verification is Essential</h2>
-            <p className="text-gray-600 max-w-2xl mx-auto">Generic training listings fail to convince modern recruiters. IQIntern shifts the placement search by delivering proctored, metric-driven verification scores.</p>
+            <p className="text-gray-600 max-w-2xl mx-auto">Generic training listings fail to convince modern recruiters. IQIntern shifts the placement search by delivering proctored, metric-driven verification scores. Recruiters can check any credential in seconds on the <Link to="/certification" className="text-orange-600 font-semibold hover:text-orange-700">certificate verification page</Link>.</p>
           </div>
           <div className="grid sm:grid-cols-2 gap-6">
             {verification.map((v, i) => (
@@ -295,6 +295,10 @@ export default function Home() {
               <Link to="/register" className="px-8 py-3 bg-white text-slate-800 font-semibold rounded-lg hover:bg-slate-100 transition-colors">Create Account</Link>
               <Link to="/contact" className="px-8 py-3 border border-white/30 font-semibold rounded-lg hover:bg-white/10 transition-colors">Contact Advisors</Link>
             </div>
+            <p className="text-slate-400 text-sm mt-6">
+              Questions first? Browse the <Link to="/faq" className="text-white font-semibold underline hover:text-orange-300">FAQ</Link> or{' '}
+              <Link to="/about" className="text-white font-semibold underline hover:text-orange-300">how IQIntern works</Link>.
+            </p>
           </div>
         </div>
       </section>

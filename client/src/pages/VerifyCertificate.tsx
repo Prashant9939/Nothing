@@ -250,6 +250,7 @@ export default function VerifyCertificate() {
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center mt-6">
               <p className="text-gray-600 text-sm">Enter the ID printed on your certificate, receipt, offer letter, report or attendance sheet to verify it.</p>
               <p className="mt-2 text-xs text-gray-500">Or simply scan the QR code on the document</p>
+              <p className="mt-2 text-xs text-gray-500">Questions about a document? Read the <Link to="/faq" className="text-orange-600 font-semibold hover:underline">verification FAQ</Link>.</p>
             </div>
           )}
         </div>

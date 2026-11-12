@@ -7,7 +7,12 @@ export default function NotFound() {
       <div className="text-center">
         <h1 className="text-9xl font-bold text-orange-500">404</h1>
         <h2 className="mt-4 text-2xl font-bold text-gray-900">Page Not Found</h2>
-        <p className="mt-2 mb-8 text-gray-500">The page you're looking for doesn't exist or has been moved.</p>
+        <p className="mt-2 mb-1 text-gray-500">The page you're looking for doesn't exist or has been moved.</p>
+        <p className="mb-8 text-sm text-gray-500">
+          Try the <Link to="/programs" className="text-orange-600 font-semibold hover:underline">program catalog</Link>,{' '}
+          <Link to="/faq" className="text-orange-600 font-semibold hover:underline">FAQ</Link>, or{' '}
+          <Link to="/contact" className="text-orange-600 font-semibold hover:underline">contact page</Link> instead.
+        </p>
         <div className="flex items-center justify-center gap-3">
           <Link
             to="/"

@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 export default function Privacy() {
   return (
     <div className="min-h-screen bg-gray-50 py-16 px-4">
@@ -43,7 +45,7 @@ export default function Privacy() {
 
           <section>
             <h2 className="text-xl font-semibold mb-3">8. Contact</h2>
-            <p className="text-gray-600 text-sm leading-relaxed">For privacy-related inquiries, contact us at support@iqintern.in.</p>
+            <p className="text-gray-600 text-sm leading-relaxed">For privacy-related inquiries, <Link to="/contact" className="text-orange-600 font-medium hover:underline">contact us</Link> or email support@iqintern.in. You can also review our <Link to="/terms" className="text-orange-600 font-medium hover:underline">Terms of Service</Link>.</p>
           </section>
         </div>
       </div>

@@ -266,6 +266,18 @@ function LearningSection({ enrollment, exam }: { enrollment: Enrollment; exam?: 
         />
       </div>
 
+      {/* Completed tracks: jump straight to earned documents */}
+      {isComplete && (
+        <div className="flex justify-center">
+          <Link
+            to="/student/documents"
+            className="inline-flex items-center gap-2 rounded-xl border border-sand bg-cream px-5 py-2.5 text-sm font-medium text-charcoal transition-colors hover:border-sand-dark hover:bg-alabaster focus:outline-none focus-visible:ring-2 focus-visible:ring-burnt/40"
+          >
+            View Certificates &amp; Documents <ArrowRight size={15} />
+          </Link>
+        </div>
+      )}
+
       {/* Module list — only while the track is still in progress */}
       {!isComplete && (
         <section className="space-y-4">

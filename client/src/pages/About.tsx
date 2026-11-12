@@ -15,7 +15,7 @@ export default function About() {
     { icon: <Code className="w-8 h-8 text-orange-500" />, title: 'Practical Training', desc: 'Learn through building real projects, not just watching videos. Every module requires submission.' },
     { icon: <UserCheck className="w-8 h-8 text-orange-500" />, title: 'Proctored Assessments', desc: 'Secure timed evaluations with tab-switching detection ensure genuine skill validation.' },
     { icon: <TrendingUp className="w-8 h-8 text-orange-500" />, title: 'Detailed Scorecards', desc: 'Get comprehensive performance metrics including grades, project scores, and analytics.' },
-    { icon: <Handshake className="w-8 h-8 text-orange-500" />, title: 'University Partners', desc: 'Recognized by 48+ universities and educational institutions across India.' },
+    { icon: <Handshake className="w-8 h-8 text-orange-500" />, title: 'University Partners', desc: <>Recognized by 48+ universities and educational institutions across India — <Link to="/partners" className="text-orange-600 font-semibold hover:text-orange-700">see our partner network</Link>.</> },
     { icon: <Headphones className="w-8 h-8 text-orange-500" />, title: '24/7 Support', desc: 'Our dedicated support team is always available to help with any queries or issues.' },
   ];
 
@@ -90,6 +90,9 @@ export default function About() {
               </div>
             ))}
           </div>
+          <p className="text-gray-500 text-sm mt-6 reveal reveal-pop">
+            Questions about the process? Read the <Link to="/faq" className="text-orange-600 font-semibold hover:text-orange-700">FAQ</Link>.
+          </p>
         </div>
       </section>
 

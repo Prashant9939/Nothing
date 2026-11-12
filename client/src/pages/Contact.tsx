@@ -37,10 +37,10 @@ export default function Contact() {
   ];
 
   const faqs = [
-    { q: 'How do I enroll in a program?', a: 'Simply create an account, browse our programs, and click enroll on your preferred track. You can complete registration and payment in under 2 minutes.' },
+    { q: 'How do I enroll in a program?', a: <>Simply create an account, <Link to="/programs" className="text-orange-600 font-medium hover:underline">browse our programs</Link>, and click enroll on your preferred track. You can complete registration and payment in under 2 minutes.</> },
     { q: 'What payment methods do you accept?', a: 'We accept UPI, credit/debit cards, net banking, and wallets through our secure RazorPay payment gateway.' },
-    { q: 'How long does certificate verification take?', a: 'Certificates are instantly verifiable through our public verification portal. Simply enter the certificate ID to view all details.' },
-    { q: 'Can I get a refund?', a: 'Yes, we offer refunds within 7 days of enrollment if you haven\'t started the program. Contact our support team for assistance.' },
+    { q: 'How long does certificate verification take?', a: <>Certificates are instantly verifiable through our <Link to="/certification" className="text-orange-600 font-medium hover:underline">public verification portal</Link>. Simply enter the certificate ID to view all details.</> },
+    { q: 'Can I get a refund?', a: <>Yes, we offer refunds within 7 days of enrollment if you haven't started the program. <Link to="/contact" className="text-orange-600 font-medium hover:underline">Contact our support team</Link> for assistance.</> },
   ];
 
   return (
@@ -57,7 +57,7 @@ export default function Contact() {
             Have questions about our programs, enrollment, or verification? Our dedicated support team is available 24/7 to assist you.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/register" className="px-8 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors">
+            <Link to="/programs" className="px-8 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors">
               Explore Programs
             </Link>
             <a href="#contact-form" className="px-8 py-3 border border-gray-600 text-white font-semibold rounded-lg hover:border-white transition-colors">
@@ -255,6 +255,9 @@ export default function Contact() {
               </details>
             ))}
           </div>
+          <p className="text-center text-sm text-gray-500 mt-6">
+            More questions? Visit the <Link to="/faq" className="text-orange-600 font-semibold hover:underline">full FAQ page</Link>.
+          </p>
         </div>
       </section>
 

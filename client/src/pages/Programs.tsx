@@ -195,6 +195,11 @@ export default function Programs() {
             <p className="text-slate-300 mb-8 max-w-2xl mx-auto">Contact our team for custom internship programs tailored to your needs</p>
             <Link to="/contact" className="px-8 py-3 bg-white text-slate-800 font-semibold rounded-lg hover:bg-slate-100 transition-colors">Contact Us</Link>
           </div>
+          <p className="text-slate-400 text-sm mt-6">
+            Still deciding? Read the <Link to="/faq" className="text-white font-semibold underline hover:text-orange-300">FAQ</Link>, see how{' '}
+            <Link to="/certification" className="text-white font-semibold underline hover:text-orange-300">verification works</Link>, or{' '}
+            <Link to="/about" className="text-white font-semibold underline hover:text-orange-300">why students trust IQIntern</Link>.
+          </p>
         </div>
       </section>
     </div>
